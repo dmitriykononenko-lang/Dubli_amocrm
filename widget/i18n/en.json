@@ -1,0 +1,35 @@
+{
+  "widget": {
+    "name": "Duplicate Finder & Merge",
+    "short_description": "Find and merge duplicate contacts, companies and leads",
+    "description": "The widget finds and merges duplicate contacts, companies and leads in amoCRM. Flexible search rules (field combinations with AND/OR), value normalization (phones, emails, names), duplicate checks while working in a card and prevention of new duplicates. This is a scaffold (stage 2): a frontend widget with no business logic; search, merge and the backend will arrive in the next stage."
+  },
+  "card": {
+    "title": "Duplicates",
+    "checking": "Checking duplicates…",
+    "no_dups": "No duplicates found",
+    "found": "Possible duplicates found",
+    "open": "Open",
+    "merge": "Merge",
+    "no_entity": "Cannot detect card"
+  },
+  "settings": {
+    "backend_url": "Backend URL",
+    "security_key": "Security key",
+    "entities": "Entities",
+    "contacts": "Contacts",
+    "companies": "Companies",
+    "leads": "Leads",
+    "rules": "Search rules",
+    "normalization": "Normalization",
+    "permissions": "Merge permissions",
+    "prevent": "Prevent duplicates"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading…",
+    "error": "Error",
+    "soon": "Coming soon"
+  }
+}
