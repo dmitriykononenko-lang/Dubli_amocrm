@@ -1,7 +1,13 @@
 *.zip
 .DS_Store
 node_modules/
-package-lock.json
-package.json
+/package.json
+/package-lock.json
 __pycache__/
 *.pyc
+
+# Бэкенд (NestJS)
+backend/dist/
+backend/coverage/
+backend/.env
+.env
