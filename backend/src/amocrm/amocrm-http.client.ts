@@ -1,0 +1,87 @@
+import { Injectable } from '@nestjs/common';
+import { request } from 'undici';
+import { AppConfigService } from '../config/app-config.service';
+import { Throttler } from './throttler';
+import { RetryableError, withRetry } from './retry';
+
+export interface TokenResponse {
+  token_type: string;
+  expires_in: number;
+  access_token: string;
+  refresh_token: string;
+}
+
+export type TokenGrant =
+  | { grant_type: 'authorization_code'; code: string }
+  | { grant_type: 'refresh_token'; refresh_token: string };
+
+/**
+ * Низкоуровневый HTTP-клиент amoCRM (undici). Не зависит от БД, чтобы избежать цикла
+ * с TokensService. Троттлинг ~rps на аккаунт + ретраи на 429/5xx.
+ */
+@Injectable()
+export class AmocrmHttpClient {
+  private readonly throttlers = new Map<string, Throttler>();
+
+  constructor(private readonly config: AppConfigService) {}
+
+  baseUrl(subdomain: string): string {
+    return `https://${subdomain}.amocrm.ru`;
+  }
+
+  private throttlerFor(key: string): Throttler {
+    let t = this.throttlers.get(key);
+    if (!t) {
+      t = new Throttler(this.config.rateLimitRps);
+      this.throttlers.set(key, t);
+    }
+    return t;
+  }
+
+  /** OAuth: обмен authorization_code или обновление по refresh_token. */
+  async exchangeToken(subdomain: string, grant: TokenGrant): Promise<TokenResponse> {
+    const body = {
+      client_id: this.config.amocrmClientId,
+      client_secret: this.config.amocrmClientSecret,
+      redirect_uri: this.config.amocrmRedirectUri,
+      ...grant,
+    };
+    const res = await request(`${this.baseUrl(subdomain)}/oauth2/access_token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.statusCode >= 400) {
+      const text = await res.body.text();
+      throw new Error(`amoCRM token endpoint ${res.statusCode}: ${text}`);
+    }
+    return (await res.body.json()) as TokenResponse;
+  }
+
+  /** Авторизованный GET к API v4 (троттлинг + ретраи). accountKey — для шардирования троттлера. */
+  async apiGet<T>(
+    subdomain: string,
+    accountKey: string,
+    path: string,
+    accessToken: string,
+  ): Promise<T> {
+    await this.throttlerFor(accountKey).acquire();
+    return withRetry(async () => {
+      const res = await request(`${this.baseUrl(subdomain)}${path}`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      });
+      if (res.statusCode === 429 || res.statusCode >= 500) {
+        const ra = Number(res.headers['retry-after']);
+        throw new RetryableError(
+          `amoCRM API ${res.statusCode}`,
+          Number.isFinite(ra) ? ra : undefined,
+        );
+      }
+      if (res.statusCode >= 400) {
+        throw new Error(`amoCRM API ${res.statusCode}: ${await res.body.text()}`);
+      }
+      return (await res.body.json()) as T;
+    });
+  }
+}
