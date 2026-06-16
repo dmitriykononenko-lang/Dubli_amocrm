@@ -5,9 +5,7 @@ import { CryptoModule } from './common/crypto/crypto.module';
 import { AuditModule } from './common/audit/audit.module';
 import { AmocrmModule } from './amocrm/amocrm.module';
 import { OauthModule } from './auth/oauth/oauth.module';
-import { EntitiesModule } from './entities/entities.module';
-import { WebhooksModule } from './webhooks/webhooks.module';
-import { DuplicatesModule } from './duplicates/duplicates.module';
+import { VisibilityModule } from './visibility/visibility.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -20,9 +18,7 @@ import { HealthModule } from './health/health.module';
     // Фичи.
     AmocrmModule,
     OauthModule,
-    EntitiesModule,
-    WebhooksModule,
-    DuplicatesModule,
+    VisibilityModule,
     HealthModule,
   ],
 })

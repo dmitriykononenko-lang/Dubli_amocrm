@@ -1,7 +1,7 @@
 {
-  "name": "dubli-backend",
+  "name": "hidden-field-backend",
   "version": "0.1.0",
-  "description": "Серверное ядро виджета поиска и объединения дублей amoCRM (Этап 3)",
+  "description": "Серверное ядро виджета Hidden Field — управление видимостью полей amoCRM",
   "license": "UNLICENSED",
   "private": true,
   "engines": {

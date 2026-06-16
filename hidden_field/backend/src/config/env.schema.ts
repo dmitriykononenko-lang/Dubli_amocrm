@@ -23,7 +23,7 @@ export const envSchema = z.object({
   AMOCRM_CLIENT_SECRET: z.string().min(1, 'AMOCRM_CLIENT_SECRET обязателен'),
   AMOCRM_REDIRECT_URI: z.string().url('AMOCRM_REDIRECT_URI должен быть URL'),
 
-  WEBHOOK_SECURITY_KEY: z.string().optional(),
+  API_SECURITY_KEY: z.string().optional(),
   AMOCRM_RATE_LIMIT_RPS: z.coerce.number().positive().default(7),
 
   DATABASE_URL_TEST: z.string().optional(),

@@ -6,7 +6,7 @@
   },
   "settings": {
     "backend_url": "URL backend виджета (https)",
-    "api_token": "Токен доступа к backend (необязательно)"
+    "api_token": "Ключ доступа к backend (заголовок X-Security-Key; совпадает с API_SECURITY_KEY на сервере)"
   },
   "advanced": {
     "engine_enabled": "Движок скрытия",

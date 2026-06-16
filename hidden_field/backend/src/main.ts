@@ -49,7 +49,7 @@ async function bootstrap(): Promise<void> {
 
   const config = app.get(AppConfigService);
   await app.listen(config.port);
-  new Logger('Bootstrap').log(`Dubli backend слушает порт ${config.port}`);
+  new Logger('Bootstrap').log(`Hidden Field backend слушает порт ${config.port}`);
 }
 
 void bootstrap();

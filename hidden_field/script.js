@@ -28,22 +28,31 @@ define(['jquery', 'lib/components/base/modal', 'underscore'], function ($, Modal
       return (s.backend_url || '').replace(/\/+$/, '');
     }
 
-    function apiCall(path, payload, method) {
-      var dfd = $.Deferred();
-      var sys = self.system();
-      $.ajax({
-        url: backendUrl() + path,
-        method: method || 'POST',
-        contentType: 'application/json',
-        headers: { 'X-Amo-Subdomain': sys.subdomain },
-        data: JSON.stringify(_.extend({
-          account_id:  AMOCRM.constant('account').id,
-          subdomain:   sys.subdomain,
-          user_id:     AMOCRM.constant('user').id,
-          widget_code: self.params.widget_code
-        }, payload || {}))
-      }).done(dfd.resolve).fail(dfd.reject);
-      return dfd.promise();
+    function apiToken() {
+      var s = self.get_settings() || {};
+      return s.api_token || '';
+    }
+
+    // Запрос к backend. account_id всегда в query (его читает ApiSecurityGuard на сервере),
+    // security_key — в заголовке X-Security-Key. GET кладёт params в query, POST — тело JSON.
+    //   apiCall('/api/meta')
+    //   apiCall('/api/config', { query: { user_id: 123 } })
+    //   apiCall('/api/matrix', { method: 'POST', body: { matrix: {...} } })
+    function apiCall(path, opts) {
+      opts = opts || {};
+      var method = opts.method || 'GET';
+      var query = $.extend({ account_id: AMOCRM.constant('account').id }, opts.query || {});
+      var ajax = {
+        url: backendUrl() + path + '?' + $.param(query),
+        method: method,
+        dataType: 'json',
+        headers: { 'X-Security-Key': apiToken() }
+      };
+      if (method === 'POST') {
+        ajax.contentType = 'application/json';
+        ajax.data = JSON.stringify(opts.body || {});
+      }
+      return $.ajax(ajax);
     }
 
     function notify(key, color) {
@@ -155,7 +164,7 @@ define(['jquery', 'lib/components/base/modal', 'underscore'], function ($, Modal
     }
 
     function loadConfigThen(cb) {
-      apiCall('/api/config', { entity_type: entityTypeName() }, 'POST')
+      apiCall('/api/config', { query: { user_id: AMOCRM.constant('user').id } })
         .done(function (resp) { config = resp || { rules: {}, funnels: {} }; cb && cb(); })
         .fail(function () { config = { rules: {}, funnels: {} }; cb && cb(); });
     }
@@ -163,7 +172,7 @@ define(['jquery', 'lib/components/base/modal', 'underscore'], function ($, Modal
     // ---------- матрица (advancedSettings) ----------
 
     function renderMatrix($mount) {
-      apiCall('/api/meta', {}, 'POST')
+      apiCall('/api/meta')
         .done(function (meta) {
           // meta: { fields:[{id,name,entity}], users:[{id,name}], pipelines:[{id,name}], matrix:{...}, groups:[...] }
           $mount.html(self.render(
@@ -221,7 +230,7 @@ define(['jquery', 'lib/components/base/modal', 'underscore'], function ($, Modal
             var $c = $(this);
             matrix[$c.attr('data-key')] = $c.attr('data-mode') || MODE.OPEN;
           });
-          apiCall('/api/matrix', { matrix: matrix }, 'POST')
+          apiCall('/api/matrix', { method: 'POST', body: { matrix: matrix } })
             .done(function () { notify('saved'); })
             .fail(function () { notify('save_failed', 'red'); });
         });

@@ -1,72 +1,76 @@
-# Dubli — бэкенд (Этап 3, ядро)
+# Hidden Field — бэкенд
 
-Серверное ядро виджета поиска и объединения дублей amoCRM. Стек: **NestJS + TypeScript**,
-доступ к PostgreSQL через **`pg` + Kysely**. Схема БД — `db/schema.sql` (источник правды,
-применяется отдельно, не через ORM-миграции).
+Серверное ядро виджета **Hidden Field** (управление видимостью полей amoCRM/Kommo).
+Стек: **NestJS + TypeScript**, доступ к PostgreSQL через **`pg` + Kysely**. Схема БД —
+`db/schema.sql` (источник правды, применяется отдельно, не через ORM-миграции).
 
-## Возможности ядра (этот этап)
+> Ядро (OAuth, шифрование токенов, клиент amoCRM v4, изоляция по аккаунту) унаследовано
+> от проверенного бэкенда виджета «Поиск дублей»; логика дублей удалена, добавлены
+> хранение матрицы видимости и выдача конфигурации виджету.
 
-- OAuth 2.0 с amoCRM, шифрованное хранение токенов (AES-256-GCM, ключ за интерфейсом KMS).
-- API-клиент amoCRM v4 (троттлинг ~7 rps, ретраи, авто-refresh токенов).
-- Приём вебхуков (`POST /webhooks/amo`): проверка `security_key`, идемпотентность, первичная
-  индексация в `entities`/`entity_keys`.
-- Сервис нормализации ключей (телефон/email/ИНН/имя → `key_hash`).
-- Поиск дублей для плашки виджета: `GET /api/duplicates` — обнаружение по общим
-  нормализованным ключам с учётом правил аккаунта (AND/OR).
+## Возможности
 
-Слияние и фоновое сканирование — следующие этапы.
+- OAuth 2.0 с amoCRM, шифрованное хранение токенов (AES-256-GCM, ключ за интерфейсом KMS),
+  авто-refresh.
+- API-клиент amoCRM v4 (троттлинг ~7 rps, ретраи): чтение полей, пользователей и воронок.
+- Хранение матрицы «поле × сотрудник» → режим (`O/S/*/B/V`) с изоляцией по аккаунту.
+- API для виджета: метаданные для экрана настроек, конфигурация режимов для текущего
+  пользователя, сохранение матрицы.
 
 ## API
 
-### `GET /api/duplicates`
+Аутентификация всех `/api/*`: `account_id` в query + `security_key` в заголовке
+`X-Security-Key` (приоритет — `accounts.settings.security_key`, фолбэк — env
+`API_SECURITY_KEY`). В настройках виджета это значение задаётся в поле `api_token`.
 
-Возвращает дубли проиндексированной сущности для плашки в карточке. Аутентификация —
-как у вебхуков: `security_key` per-account (фолбэк — env `WEBHOOK_SECURITY_KEY`).
+### `GET /api/meta?account_id=`
 
-| Параметр | Где | Описание |
-|---|---|---|
-| `account_id` | query | id аккаунта amoCRM (обязателен) |
-| `entity_type` | query | `contact`/`company`/`lead` (принимается и множественное число) |
-| `amo_id` | query | id сущности в amoCRM (целое) |
-| `security_key` | заголовок `X-Security-Key` или query | ключ доступа |
-
-```bash
-curl 'http://localhost:3000/api/duplicates?account_id=123&entity_type=contact&amo_id=456' \
-  -H 'X-Security-Key: <key>'
-```
+Данные для экрана настроек: поля (по сущностям), пользователи, воронки и текущая матрица.
 
 ```jsonc
 {
-  "entity": { "entity_type": "contact", "amo_id": "456", "indexed": true },
-  "count": 1,
-  "duplicates": [
-    {
-      "amo_id": "789",
-      "name": "Иван Петров",
-      "matched_keys": [{ "key_type": "phone", "key_norm": "9991112233" }],
-      "matched_rules": ["По телефону"]   // имена сработавших правил; [] при фолбэке
-    }
-  ]
+  "fields":    [{ "id": "111", "name": "Бюджет", "entity": "lead" }],
+  "users":     [{ "id": "500", "name": "Менеджер" }],
+  "pipelines": [{ "id": "1", "name": "Продажи" }],
+  "matrix":    { "111:500": "S" },   // "field:user" -> mode (только режимы ≠ O)
+  "groups":    []                     // виртуальные группы — следующая очередь
 }
 ```
 
-Обнаружение работает по индексу `entity_keys` (перебора API amoCRM нет, §6.2). Правила
-(`rules`) комбинируют ключи через AND/OR, между правилами — OR; без включённых правил
-дублем считается любая сущность с общим ключом. Если сущности ещё нет в индексе —
-`indexed: false`, `duplicates: []` (придёт после вебхука/сканирования).
+### `GET /api/config?account_id=&user_id=`
+
+Режимы полей для пользователя — в формате, который применяет `resolveMode()` во фронтенде.
+
+```jsonc
+{
+  "rules":   { "111": { "*": { "*": "S" } } },  // rules[fieldId][entity][pipeline] = mode
+  "funnels": {}                                  // наследование воронки — следующая очередь
+}
+```
+
+### `POST /api/matrix?account_id=`
+
+Полное сохранение матрицы (тело `{ "matrix": { "field:user": mode } }`). Режим `O`
+(по умолчанию) и кривые ключи отбрасываются. Возвращает `{ "saved": <число строк> }`.
+
+```bash
+curl -X POST 'http://localhost:3000/api/matrix?account_id=123' \
+  -H 'X-Security-Key: <key>' -H 'Content-Type: application/json' \
+  -d '{ "matrix": { "111:500": "S", "222:500": "B" } }'
+```
 
 ## Требования
 
 - Node.js ≥ 20 (разработка на 22).
-- PostgreSQL 16 (локально — Docker, прод — Selectel managed).
+- PostgreSQL 16 (локально — Docker).
 - `psql` в PATH (для `npm run db:apply`).
 
 ## Установка и запуск
 
 ```bash
-cd backend
-npm ci                 # или npm install
-cp .env.example .env    # заполнить TOKEN_ENC_KEY, DATABASE_URL, AMOCRM_*
+cd hidden_field/backend
+npm ci                  # или npm install
+cp .env.example .env    # заполнить TOKEN_ENC_KEY, DATABASE_URL, AMOCRM_*, API_SECURITY_KEY
 openssl rand -base64 32 # сгенерировать TOKEN_ENC_KEY (32 байта)
 npm run build
 npm run start:dev       # http://localhost:3000 ; проверка: GET /health
@@ -75,24 +79,20 @@ npm run start:dev       # http://localhost:3000 ; проверка: GET /health
 ## База данных (локально)
 
 ```bash
-docker run --rm -d --name dubli-pg -e POSTGRES_PASSWORD=pg -p 5433:5432 postgres:16-alpine
-until docker exec dubli-pg pg_isready -U postgres; do sleep 1; done
+docker run --rm -d --name hf-pg -e POSTGRES_PASSWORD=pg -p 5433:5432 postgres:16-alpine
+until docker exec hf-pg pg_isready -U postgres; do sleep 1; done
 DATABASE_URL=postgres://postgres:pg@localhost:5433/postgres npm run db:apply
 ```
 
-> При изменении `db/schema.sql` обновите типы Kysely в `src/common/db/database.types.ts`
-> (вручную или через `kysely-codegen`).
+> При изменении `db/schema.sql` обновите типы Kysely в `src/common/db/database.types.ts`.
 
 ## Тесты
 
-- **Юнит** (без БД/сети): `npm test` — нормализация, crypto, сервисы с моками.
+- **Юнит** (без БД/сети): `npm test` — логика сервиса видимости, crypto, oauth/tokens с моками.
 - **e2e** (нужен PostgreSQL): `npm run test:e2e`. Поднимет PostgreSQL через testcontainers
   (нужен Docker) либо использует `DATABASE_URL_TEST`. Без Docker и без `DATABASE_URL_TEST`
   e2e-тесты с БД пропускаются.
 
 ```bash
-# e2e против внешней БД:
 DATABASE_URL_TEST=postgres://postgres:pg@localhost:5433/postgres npm run test:e2e
 ```
-
-Тесты виджета (фронт) — отдельный набор в корне репозитория: `node test/run-tests.js`.

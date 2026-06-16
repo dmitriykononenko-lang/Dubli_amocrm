@@ -1,8 +1,7 @@
-# БД бэкенда — схема (Этап 1)
+# БД бэкенда — схема
 
-Схема PostgreSQL для бэкенда виджета «Поиск и объединение дублей». Рассчитана на
-**Selectel managed PostgreSQL** (защищённый сегмент «Облако ФЗ-152»). Подробное описание
-модели — в [`docs/db-schema.md`](../../docs/db-schema.md).
+Схема PostgreSQL для бэкенда виджета **Hidden Field** (управление видимостью полей
+amoCRM/Kommo). Источник правды — [`schema.sql`](schema.sql).
 
 ## Применение
 
@@ -10,29 +9,35 @@
 
 ```bash
 psql "postgresql://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require" -f backend/db/schema.sql
+# или: DATABASE_URL=... bash backend/scripts/apply-schema.sh
 ```
 
 Локальная проверка во временной БД (Docker):
 
 ```bash
-docker run --rm -d --name dubli-pg -e POSTGRES_PASSWORD=pg -p 5433:5432 postgres:16-alpine
-until docker exec dubli-pg pg_isready -U postgres; do sleep 1; done
+docker run --rm -d --name hf-pg -e POSTGRES_PASSWORD=pg -p 5433:5432 postgres:16-alpine
+until docker exec hf-pg pg_isready -U postgres; do sleep 1; done
 PGPASSWORD=pg psql -h localhost -p 5433 -U postgres -f backend/db/schema.sql
-docker rm -f dubli-pg
+docker rm -f hf-pg
 ```
+
+## Таблицы
+
+- **accounts** — подключённые аккаунты amoCRM/Kommo и их настройки (`settings.security_key`).
+- **oauth_tokens** — пара OAuth-токенов, зашифрованы at rest (AES-GCM, ключ в KMS).
+- **visibility_matrix** — матрица «поле × пользователь» → режим (`O/S/*/B/V`).
+  Хранятся только нестандартные режимы (≠ `O`); отсутствие строки = `O` (открыто).
+- **audit_log** — аудит (установка, использование токенов, сохранение матрицы).
 
 ## Принципы
 
-- **Изоляция по аккаунтам.** Во всех прикладных таблицах есть `account_id`; запросы приложения
-  обязаны фильтроваться по нему (152-ФЗ, §8 ТЗ). Данные одного аккаунта недоступны другому.
-- **Шифрование токенов.** В `oauth_tokens` хранятся только зашифрованные значения (AES-GCM,
-  ключ — во внешнем KMS/секрет-менеджере; провайдер под Selectel уточняется на Этапе 3).
-  Открытых токенов в БД нет.
-- **Индекс поиска дублей.** Обнаружение идёт по `entity_keys` (btree по
-  `account_id, entity_type, key_type, key_hash`), а не перебором API amoCRM (§6.2/§7.3).
-- **Локализация данных.** Первичная БД с ПДн размещается в РФ (152-ФЗ, ст. 18 ч. 5).
+- **Изоляция по аккаунтам.** Во всех прикладных таблицах есть `account_id`; запросы
+  приложения фильтруются по нему (см. `requireAccountId`). Данные одного аккаунта
+  недоступны другому.
+- **Шифрование токенов.** В `oauth_tokens` хранятся только зашифрованные значения
+  (AES-GCM, ключ — во внешнем KMS/секрет-менеджере). Открытых токенов в БД нет.
 
 ## Миграции
 
-Для Этапа 3 рекомендуется завести инструмент миграций под выбранный стек (например, для NestJS —
-TypeORM/Prisma/`node-pg-migrate`). Текущий `schema.sql` — стартовая (baseline) миграция.
+Текущий `schema.sql` — стартовая (baseline) миграция. При изменении схемы обновляйте
+типы Kysely в `src/common/db/database.types.ts` (вручную или через `kysely-codegen`).

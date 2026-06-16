@@ -10,6 +10,6 @@ export class OauthController {
   @Get('callback')
   async callback(@Query() query: InstallQuery, @Res() res: Response): Promise<void> {
     await this.oauth.handleInstall(query);
-    res.status(200).send('Интеграция Dubli установлена. Это окно можно закрыть.');
+    res.status(200).send('Интеграция Hidden Field установлена. Это окно можно закрыть.');
   }
 }

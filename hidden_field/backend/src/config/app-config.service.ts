@@ -42,8 +42,8 @@ export class AppConfigService {
   get amocrmRedirectUri(): string {
     return this.get('AMOCRM_REDIRECT_URI');
   }
-  get webhookSecurityKey(): string | undefined {
-    return this.get('WEBHOOK_SECURITY_KEY');
+  get apiSecurityKey(): string | undefined {
+    return this.get('API_SECURITY_KEY');
   }
   get rateLimitRps(): number {
     return this.get('AMOCRM_RATE_LIMIT_RPS');

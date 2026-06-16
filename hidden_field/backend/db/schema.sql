@@ -1,7 +1,6 @@
--- Dubli — виджет поиска и объединения дублей для amoCRM/Kommo
--- Схема БД бэкенда (Этап 1 — Проектирование). PostgreSQL.
--- Применяется на Selectel managed PostgreSQL. Идемпотентно: безопасно запускать повторно.
--- Изоляция данных по account_id присутствует во всех прикладных таблицах (152-ФЗ, §8 ТЗ).
+-- Hidden Field — виджет управления видимостью полей amoCRM/Kommo
+-- Схема БД бэкенда. PostgreSQL. Идемпотентно: безопасно запускать повторно.
+-- Изоляция данных по account_id присутствует во всех прикладных таблицах.
 
 BEGIN;
 
@@ -9,51 +8,35 @@ BEGIN;
 -- ENUM-типы (идемпотентно через DO/EXCEPTION — CREATE TYPE не поддерживает IF NOT EXISTS)
 -- =========================================================================
 DO $$ BEGIN
-  CREATE TYPE entity_type AS ENUM ('contact', 'company', 'lead');
+  -- O открыть · S скрыть · * звёздочки · B блокировать · V воронка
+  CREATE TYPE field_mode AS ENUM ('O', 'S', '*', 'B', 'V');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE TYPE key_type AS ENUM ('phone', 'email', 'inn', 'name', 'custom');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE TYPE rule_operator AS ENUM ('AND', 'OR');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE TYPE merge_mode AS ENUM ('auto', 'manual');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE TYPE scan_status AS ENUM ('queued', 'running', 'paused', 'done', 'error');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE TYPE audit_action AS ENUM
-    ('install', 'token_use', 'webhook', 'api_call', 'merge', 'rollback', 'scan');
+  CREATE TYPE audit_action AS ENUM ('install', 'token_use', 'api_call', 'matrix_save');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- =========================================================================
 -- accounts — подключённые аккаунты amoCRM/Kommo (биллинг за аккаунт)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS accounts (
-  account_id   BIGINT PRIMARY KEY,                       -- id аккаунта amoCRM (из JWT)
+  account_id   BIGINT PRIMARY KEY,                       -- id аккаунта amoCRM
   subdomain    TEXT        NOT NULL,
   status       TEXT        NOT NULL DEFAULT 'active',     -- active | suspended | uninstalled
   plan         TEXT,                                      -- тариф (монетизация за аккаунт)
-  settings     JSONB       NOT NULL DEFAULT '{}'::jsonb,  -- настройки виджета
+  settings     JSONB       NOT NULL DEFAULT '{}'::jsonb,  -- настройки виджета (в т.ч. security_key)
   installed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- =========================================================================
--- oauth_tokens — пара токенов OAuth, зашифровано at rest (AES-GCM, ключ в KMS), §7.3/§8
+-- oauth_tokens — пара токенов OAuth, зашифровано at rest (AES-GCM, ключ в KMS)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS oauth_tokens (
   account_id         BIGINT      PRIMARY KEY REFERENCES accounts(account_id) ON DELETE CASCADE,
   access_token_enc   BYTEA       NOT NULL,                -- шифртекст access_token (AES-GCM)
   refresh_token_enc  BYTEA       NOT NULL,                -- шифртекст refresh_token (AES-GCM)
-  nonce              BYTEA       NOT NULL,                 -- GCM nonce/IV
+  nonce              BYTEA       NOT NULL,                 -- GCM nonce/IV (access || refresh)
   kms_key_ref        TEXT        NOT NULL,                 -- ссылка на ключ в KMS/секрет-менеджере
   access_expires_at  TIMESTAMPTZ NOT NULL,                -- ~24 ч
   refresh_expires_at TIMESTAMPTZ NOT NULL,                -- ~3 мес
@@ -61,123 +44,23 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
 );
 
 -- =========================================================================
--- entities — реплика ключевых полей сущностей (индекс на стороне бэкенда), §7.3
+-- visibility_matrix — матрица «поле × пользователь» → режим видимости.
+-- Хранятся только нестандартные режимы (≠ 'O'); отсутствие строки = 'O' (открыто).
 -- =========================================================================
-CREATE TABLE IF NOT EXISTS entities (
-  id          BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id  BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  entity_type entity_type NOT NULL,
-  amo_id      BIGINT      NOT NULL,                        -- id сущности в amoCRM
-  key_fields  JSONB       NOT NULL DEFAULT '{}'::jsonb,    -- снимок исходных ключевых полей
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (account_id, entity_type, amo_id)
+CREATE TABLE IF NOT EXISTS visibility_matrix (
+  account_id BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  user_id    BIGINT      NOT NULL,                         -- id пользователя amoCRM
+  field_id   TEXT        NOT NULL,                         -- id поля amoCRM или код системного поля
+  mode       field_mode  NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, user_id, field_id)
 );
-CREATE INDEX IF NOT EXISTS idx_entities_account ON entities (account_id, entity_type);
+-- быстрый разрез по пользователю (применение режимов в карточке)
+CREATE INDEX IF NOT EXISTS idx_visibility_matrix_user
+  ON visibility_matrix (account_id, user_id);
 
 -- =========================================================================
--- entity_keys — нормализованные ключи для поиска дублей. Основной механизм обнаружения, §6.2
--- =========================================================================
-CREATE TABLE IF NOT EXISTS entity_keys (
-  id          BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id  BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  entity_id   BIGINT      NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-  entity_type entity_type NOT NULL,
-  key_type    key_type    NOT NULL,
-  key_hash    BYTEA       NOT NULL,                        -- SHA-256(key_type || ':' || normalized)
-  key_norm    TEXT        NOT NULL                         -- нормализованное значение (отладка/нечёткое)
-);
--- основной индекс обнаружения дублей: точное совпадение по нормализованному ключу
-CREATE INDEX IF NOT EXISTS idx_entity_keys_lookup
-  ON entity_keys (account_id, entity_type, key_type, key_hash);
-CREATE INDEX IF NOT EXISTS idx_entity_keys_entity
-  ON entity_keys (entity_id);
--- Нечёткое сравнение (2-я итерация, опционально): требует расширение pg_trgm.
---   CREATE EXTENSION IF NOT EXISTS pg_trgm;
---   CREATE INDEX IF NOT EXISTS idx_entity_keys_trgm
---     ON entity_keys USING gin (key_norm gin_trgm_ops);
-
--- =========================================================================
--- rules — правила поиска дублей (поля + AND/OR). Несколько правил на сущность, между ними OR. §4.4
--- =========================================================================
-CREATE TABLE IF NOT EXISTS rules (
-  id          BIGINT        GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id  BIGINT        NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  entity_type entity_type   NOT NULL,
-  name        TEXT          NOT NULL,
-  fields      JSONB         NOT NULL DEFAULT '[]'::jsonb,  -- [{ "key_type": "...", "field_id": 123 }]
-  operator    rule_operator NOT NULL DEFAULT 'AND',
-  auto_merge  BOOLEAN       NOT NULL DEFAULT FALSE,         -- автообъединение по умолчанию ВЫКЛ (§5.2)
-  enabled     BOOLEAN       NOT NULL DEFAULT TRUE,
-  created_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_rules_account
-  ON rules (account_id, entity_type) WHERE enabled;
-
--- =========================================================================
--- merge_journal — журнал объединений (кто, когда, что), §6.4
--- =========================================================================
-CREATE TABLE IF NOT EXISTS merge_journal (
-  id               BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id       BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  entity_type      entity_type NOT NULL,
-  master_amo_id    BIGINT      NOT NULL,
-  duplicate_amo_id BIGINT      NOT NULL,
-  mode             merge_mode  NOT NULL,
-  author_user_id   BIGINT,                                 -- пользователь amoCRM (NULL при авто)
-  transferred      JSONB       NOT NULL DEFAULT '{}'::jsonb,-- перенесённые связи (сделки/задачи/...)
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_merge_journal_account
-  ON merge_journal (account_id, created_at DESC);
-
--- =========================================================================
--- snapshots — снимки дублей для отката, срок хранения по умолчанию 30 дней, §6.4
--- =========================================================================
-CREATE TABLE IF NOT EXISTS snapshots (
-  id          BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  merge_id    BIGINT      NOT NULL REFERENCES merge_journal(id) ON DELETE CASCADE,
-  account_id  BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  entity_type entity_type NOT NULL,
-  amo_id      BIGINT      NOT NULL,
-  payload     JSONB       NOT NULL,                         -- полный снимок дубля для восстановления
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '30 days')
-);
-CREATE INDEX IF NOT EXISTS idx_snapshots_expiry ON snapshots (expires_at);
-CREATE INDEX IF NOT EXISTS idx_snapshots_merge  ON snapshots (merge_id);
-
--- =========================================================================
--- scan_jobs — фоновые задачи массового сканирования (прогресс/пауза/докачка), §5.3/§7.4
--- =========================================================================
-CREATE TABLE IF NOT EXISTS scan_jobs (
-  id          BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  account_id  BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  entity_type entity_type NOT NULL,
-  status      scan_status NOT NULL DEFAULT 'queued',
-  progress    INTEGER     NOT NULL DEFAULT 0,
-  total       INTEGER     NOT NULL DEFAULT 0,
-  cursor      TEXT,                                         -- докачка по _links.next
-  params      JSONB       NOT NULL DEFAULT '{}'::jsonb,
-  started_at  TIMESTAMPTZ,
-  finished_at TIMESTAMPTZ,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_scan_jobs_account ON scan_jobs (account_id, status);
-
--- =========================================================================
--- webhook_events — идемпотентность приёма вебхуков (дедуп по event_id), §7.3
--- =========================================================================
-CREATE TABLE IF NOT EXISTS webhook_events (
-  account_id   BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  event_id     TEXT        NOT NULL,
-  type         TEXT        NOT NULL,                        -- add_contact | update_lead | ...
-  received_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  processed_at TIMESTAMPTZ,
-  PRIMARY KEY (account_id, event_id)
-);
-
--- =========================================================================
--- audit_log — аудит (токены, вебхуки, вызовы API, merge/rollback), §8
+-- audit_log — аудит (установка, использование токенов, сохранение матрицы)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS audit_log (
   id         BIGINT       GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

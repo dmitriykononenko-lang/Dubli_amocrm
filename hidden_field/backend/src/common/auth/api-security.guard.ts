@@ -13,7 +13,7 @@ import { ACCOUNT_ID_PROP } from './account-id.decorator';
 /**
  * Аутентификация запросов виджета к API (`/api/*`) по security_key.
  * account_id — из query `?account_id=`; ключ — из заголовка `X-Security-Key` или query `?security_key=`.
- * Ожидаемый ключ: per-account из accounts.settings (приоритет), фолбэк — env WEBHOOK_SECURITY_KEY.
+ * Ожидаемый ключ: per-account из accounts.settings (приоритет), фолбэк — env API_SECURITY_KEY.
  * После успеха кладёт проверенный account_id в req (см. @AccountId).
  */
 @Injectable()
@@ -33,7 +33,7 @@ export class ApiSecurityGuard implements CanActivate {
     if (!provided) throw new UnauthorizedException('Не передан security_key');
 
     const expected =
-      (await this.accounts.getSecurityKey(accountId)) ?? this.config.webhookSecurityKey ?? null;
+      (await this.accounts.getSecurityKey(accountId)) ?? this.config.apiSecurityKey ?? null;
     if (!expected) throw new UnauthorizedException('security_key не настроен');
 
     if (!timingSafeEqualStr(provided, expected)) {
