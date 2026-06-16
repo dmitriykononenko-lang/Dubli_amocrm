@@ -11,8 +11,49 @@
 - Приём вебхуков (`POST /webhooks/amo`): проверка `security_key`, идемпотентность, первичная
   индексация в `entities`/`entity_keys`.
 - Сервис нормализации ключей (телефон/email/ИНН/имя → `key_hash`).
+- Поиск дублей для плашки виджета: `GET /api/duplicates` — обнаружение по общим
+  нормализованным ключам с учётом правил аккаунта (AND/OR).
 
-Слияние, фоновое сканирование и эндпоинт дублей для виджета — следующие этапы.
+Слияние и фоновое сканирование — следующие этапы.
+
+## API
+
+### `GET /api/duplicates`
+
+Возвращает дубли проиндексированной сущности для плашки в карточке. Аутентификация —
+как у вебхуков: `security_key` per-account (фолбэк — env `WEBHOOK_SECURITY_KEY`).
+
+| Параметр | Где | Описание |
+|---|---|---|
+| `account_id` | query | id аккаунта amoCRM (обязателен) |
+| `entity_type` | query | `contact`/`company`/`lead` (принимается и множественное число) |
+| `amo_id` | query | id сущности в amoCRM (целое) |
+| `security_key` | заголовок `X-Security-Key` или query | ключ доступа |
+
+```bash
+curl 'http://localhost:3000/api/duplicates?account_id=123&entity_type=contact&amo_id=456' \
+  -H 'X-Security-Key: <key>'
+```
+
+```jsonc
+{
+  "entity": { "entity_type": "contact", "amo_id": "456", "indexed": true },
+  "count": 1,
+  "duplicates": [
+    {
+      "amo_id": "789",
+      "name": "Иван Петров",
+      "matched_keys": [{ "key_type": "phone", "key_norm": "9991112233" }],
+      "matched_rules": ["По телефону"]   // имена сработавших правил; [] при фолбэке
+    }
+  ]
+}
+```
+
+Обнаружение работает по индексу `entity_keys` (перебора API amoCRM нет, §6.2). Правила
+(`rules`) комбинируют ключи через AND/OR, между правилами — OR; без включённых правил
+дублем считается любая сущность с общим ключом. Если сущности ещё нет в индексе —
+`indexed: false`, `duplicates: []` (придёт после вебхука/сканирования).
 
 ## Требования
 

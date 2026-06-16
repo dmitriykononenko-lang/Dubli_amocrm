@@ -7,6 +7,7 @@ import { AmocrmModule } from './amocrm/amocrm.module';
 import { OauthModule } from './auth/oauth/oauth.module';
 import { EntitiesModule } from './entities/entities.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { DuplicatesModule } from './duplicates/duplicates.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { HealthModule } from './health/health.module';
     OauthModule,
     EntitiesModule,
     WebhooksModule,
+    DuplicatesModule,
     HealthModule,
   ],
 })

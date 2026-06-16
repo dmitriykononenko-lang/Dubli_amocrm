@@ -4,10 +4,10 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { AccountsService } from '../accounts/accounts.service';
 import { AppConfigService } from '../config/app-config.service';
+import { timingSafeEqualStr } from '../common/auth/security-key.util';
 
 /**
  * Аутентификация входящего вебхука по security_key:
@@ -33,7 +33,7 @@ export class WebhookAuthGuard implements CanActivate {
       null;
     if (!expected) throw new UnauthorizedException('security_key не настроен');
 
-    if (!this.safeEqual(provided, expected)) {
+    if (!timingSafeEqualStr(provided, expected)) {
       throw new UnauthorizedException('Неверный security_key');
     }
     return true;
@@ -52,12 +52,5 @@ export class WebhookAuthGuard implements CanActivate {
     if (typeof q === 'string' && q) return q;
     const bodyAccountId = req.body?.account?.id;
     return bodyAccountId != null ? String(bodyAccountId) : null;
-  }
-
-  private safeEqual(a: string, b: string): boolean {
-    const ab = Buffer.from(a);
-    const bb = Buffer.from(b);
-    if (ab.length !== bb.length) return false;
-    return timingSafeEqual(ab, bb);
   }
 }
