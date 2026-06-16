@@ -10,4 +10,7 @@ __pycache__/
 backend/dist/
 backend/coverage/
 backend/.env
+hidden_field/backend/dist/
+hidden_field/backend/coverage/
+hidden_field/backend/.env
 .env
