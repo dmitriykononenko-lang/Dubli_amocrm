@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-06-16.1';
+    var WIDGET_BUILD = '2026-06-16.2';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -136,6 +136,12 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-dups__link:hover{text-decoration:underline}',
         '.dub-dups__id{color:#92989b;font-size:12px;margin-left:6px}',
         '.dub-dups__keys{font-size:12px;color:#62696e;margin-top:3px}',
+        '.dub-dups__head{display:flex;align-items:center;gap:8px}',
+        '.dub-dups__merge{margin-left:auto;flex:0 0 auto;padding:5px 10px;font-size:12px}',
+        /* подтверждение объединения */
+        '.dub-confirm__text{font-size:13px;color:#313942;line-height:18px;margin-bottom:10px}',
+        '.dub-confirm__target{font-size:13px;color:#313942;font-weight:bold;margin-bottom:16px}',
+        '.dub-confirm__actions{margin-top:4px}',
         /* скелет настроек */
         '.dub-settings{margin:0 0 15px}',
         '.dub-settings__hint{font-size:13px;color:#92989b;margin-bottom:14px;line-height:17px}',
@@ -315,16 +321,15 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var st = statusFor(state);
       var statusHtml = '<div class="dub__status ' + st.cls + '">' + st.icon +
         '<span>' + escapeHtml(st.text) + '</span></div>';
-      // «Открыть» активна только при найденных дублях; «Объединить» — пока всегда
-      // неактивна (движок слияния на бэкенде это следующий слой).
-      var openDisabled = state.status === 'found' ? '' : ' disabled';
+      // «Открыть» и «Объединить» активны только при найденных дублях.
+      var disabled = state.status === 'found' ? '' : ' disabled';
       return '<div class="dub" data-entity="' + escapeHtml(entity ? entity.type : '') + '">' +
         '<div class="dub__banner">' + LOGO_SVG + '<span>KO:AGENCY</span></div>' +
         statusHtml +
         '<div class="dub__actions">' +
-          '<button type="button" class="dub__btn dub__open"' + openDisabled + '>' +
+          '<button type="button" class="dub__btn dub__open"' + disabled + '>' +
             escapeHtml(t('card.open', 'Открыть')) + '</button>' +
-          '<button type="button" class="dub__btn dub__btn_primary dub__merge" disabled>' +
+          '<button type="button" class="dub__btn dub__btn_primary dub__merge"' + disabled + '>' +
             escapeHtml(t('card.merge', 'Объединить')) + '</button>' +
         '</div>' +
         '</div>';
@@ -373,7 +378,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
 
     /* ------------------------- список дублей (модалка) ------------------------- */
 
-    // Модалка со списком возможных дублей: имя-ссылка на карточку + совпавшие ключи.
+    // Модалка со списком возможных дублей: имя-ссылка на карточку, совпавшие ключи
+    // и кнопка «Объединить в текущую» (текущая карточка — главная запись).
     function openDuplicatesModal() {
       var items = self._dups || [];
       var entity = self._entity;
@@ -387,9 +393,14 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           return escapeHtml(k.key_type + ': ' + k.key_norm);
         }).join(', ');
         return '<div class="dub-dups__item">' +
-          '<a class="dub-dups__link" href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' +
-            escapeHtml(name) + '</a>' +
-          '<span class="dub-dups__id">#' + escapeHtml(d.amo_id) + '</span>' +
+          '<div class="dub-dups__head">' +
+            '<a class="dub-dups__link" href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' +
+              escapeHtml(name) + '</a>' +
+            '<span class="dub-dups__id">#' + escapeHtml(d.amo_id) + '</span>' +
+            '<button type="button" class="dub__btn dub-dups__merge" data-amo-id="' +
+              escapeHtml(d.amo_id) + '" data-name="' + escapeHtml(name) + '">' +
+              escapeHtml(t('card.merge_into', 'Объединить в текущую')) + '</button>' +
+          '</div>' +
           (keys ? '<div class="dub-dups__keys">' +
             escapeHtml(t('card.matched_by', 'Совпадение по')) + ': ' + keys + '</div>' : '') +
           '</div>';
@@ -397,7 +408,79 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var html = '<div class="dub-modal__title">' +
         escapeHtml(t('card.dups_title', 'Возможные дубли')) + '</div>' +
         '<div class="dub-dups">' + rows + '</div>';
-      openYpModal('dub-dups-modal', html);
+      self._listModal = openYpModal('dub-dups-modal', html);
+    }
+
+    /* ------------------------------ объединение ------------------------------ */
+
+    function currentUserId() {
+      try {
+        var u = AMOCRM.constant('user') || {};
+        return u.id != null ? u.id : undefined;
+      } catch (e) {
+        return undefined;
+      }
+    }
+
+    function closeMergeModals() {
+      if (self._confirmModal) {
+        closeYpModal(self._confirmModal);
+        self._confirmModal = null;
+      }
+      if (self._listModal) {
+        closeYpModal(self._listModal);
+        self._listModal = null;
+      }
+    }
+
+    // Подтверждение: дубль будет объединён в текущую карточку (главную) и удалён.
+    function confirmMerge(duplicateAmoId, duplicateName) {
+      var entity = self._entity;
+      if (!entity) {
+        return;
+      }
+      var target = '#' + duplicateAmoId + (duplicateName ? ' — ' + duplicateName : '');
+      var html = '<div class="dub-modal__title">' + escapeHtml(t('card.merge', 'Объединить')) + '</div>' +
+        '<div class="dub-confirm__text">' +
+          escapeHtml(t('card.merge_confirm',
+            'Объединить запись в текущую карточку? Дубль будет удалён (можно откатить).')) +
+        '</div>' +
+        '<div class="dub-confirm__target">' + escapeHtml(target) +
+          ' → #' + escapeHtml(String(entity.id)) + '</div>' +
+        '<div class="dub__actions dub-confirm__actions">' +
+          '<button type="button" class="dub__btn dub-confirm__cancel">' +
+            escapeHtml(t('common.cancel', 'Отмена')) + '</button>' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-confirm__ok" data-amo-id="' +
+            escapeHtml(duplicateAmoId) + '">' + escapeHtml(t('card.merge', 'Объединить')) + '</button>' +
+        '</div>';
+      self._confirmModal = openYpModal('dub-confirm-modal', html);
+    }
+
+    // POST {backend_url}/api/merge: текущая карточка — главная, выбранная запись — дубль.
+    function performMerge(duplicateAmoId) {
+      var entity = self._entity;
+      if (!entity || !isConfigured()) {
+        return;
+      }
+      $.ajax({
+        url: backendBase() + '/api/merge?account_id=' + encodeURIComponent(accountId()),
+        method: 'POST',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({
+          entity_type: entity.type,
+          master_amo_id: entity.id,
+          duplicate_amo_id: duplicateAmoId,
+          author_user_id: currentUserId()
+        }),
+        headers: { 'X-Security-Key': getSettings().security_key }
+      }).done(function () {
+        closeMergeModals();
+        showToast(t('card.merge_done', 'Дубль объединён'));
+        renderCardWidget(); // перепроверяем дубли после объединения
+      }).fail(function () {
+        showToast(t('card.merge_failed', 'Не удалось объединить'), true);
+      });
     }
 
     /* ------------------------- скелет экрана настроек ------------------------- */
@@ -472,17 +555,30 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       bind_actions: function () {
-        // Делегированные обработчики переживают перерисовки карточки,
-        // неймспейс .dub защищает от дублей при повторных вызовах bind_actions.
-        // «Открыть» → список дублей; «Объединить» пока неактивна (слияние — след. слой).
+        // Делегированные обработчики переживают перерисовки карточки и живут на document,
+        // поэтому ловят и кнопки в модалках; неймспейс .dub защищает от дублей.
         $(document)
           .off('click.dub')
-          .on('click.dub', '.dub__open', function () {
+          // «Открыть» и «Объединить» в плашке → список возможных дублей
+          .on('click.dub', '.dub__open, .dub__merge', function () {
             if (!$(this).prop('disabled')) {
               openDuplicatesModal();
             }
           })
-          .on('click.dub', '.dub__merge', function () { /* слияние — следующий слой */ });
+          // строка списка: «Объединить в текущую» → подтверждение
+          .on('click.dub', '.dub-dups__merge', function () {
+            confirmMerge($(this).attr('data-amo-id'), $(this).attr('data-name'));
+          })
+          // подтверждение объединения
+          .on('click.dub', '.dub-confirm__ok', function () {
+            performMerge($(this).attr('data-amo-id'));
+          })
+          .on('click.dub', '.dub-confirm__cancel', function () {
+            if (self._confirmModal) {
+              closeYpModal(self._confirmModal);
+              self._confirmModal = null;
+            }
+          });
         return true;
       },
 
@@ -496,8 +592,9 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       destroy: function () {
-        // Очистка слушателей / DOM / таймеров в неймспейсе .dub
+        // Очистка слушателей / DOM / модалок в неймспейсе .dub
         $(document).off('click.dub');
+        closeMergeModals();
         $('.dub-toast').remove();
       },
 

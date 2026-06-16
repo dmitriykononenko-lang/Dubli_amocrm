@@ -237,7 +237,7 @@ section('Плашка: найдены дубли → активная «Откр
   assert($('#card-zone .dub__status_found').length === 1, 'статус «найдены дубли»');
   assert($('#card-zone .dub__status').text().indexOf('2') !== -1, 'в статусе показано число дублей');
   assert(!$('#card-zone .dub__open').prop('disabled'), '«Открыть» активна при найденных дублях');
-  assert($('#card-zone .dub__merge').prop('disabled'), '«Объединить» по-прежнему неактивна (слияние — след. слой)');
+  assert(!$('#card-zone .dub__merge').prop('disabled'), '«Объединить» активна при найденных дублях');
 
   $('#card-zone .dub__open').trigger('click');
   const $modal = $('.modal-stub');
@@ -247,6 +247,43 @@ section('Плашка: найдены дубли → активная «Откр
     'ссылка ведёт на карточку дубля');
   assert($modal.find('.dub-dups__link').eq(1).text() === '#202', 'без имени показывается #amo_id');
   assert($modal.text().indexOf('phone: 9991112233') !== -1, 'показан совпавший ключ');
+}
+
+/* 1д. Объединение: список → подтверждение → POST /api/merge */
+section('Объединить: список → подтверждение → POST /api/merge');
+{
+  resetEnv();
+  ajaxResponse = {
+    entity: { indexed: true },
+    count: 1,
+    duplicates: [{ amo_id: '201', name: 'Иван', matched_keys: [{ key_type: 'phone', key_norm: '999' }], matched_rules: [] }]
+  };
+  const widget = makeWidget('lcard-1');
+  widget.callbacks.render();
+  widget.callbacks.bind_actions();
+
+  // «Объединить» в плашке открывает тот же список с кнопками строки
+  $('#card-zone .dub__merge').trigger('click');
+  assert($('.dub-dups__merge').length === 1, 'в списке есть кнопка «Объединить в текущую»');
+
+  // строка → подтверждение
+  $('.dub-dups__merge').first().trigger('click');
+  assert($('.dub-confirm__ok').length === 1, 'показано подтверждение объединения');
+
+  // подтверждение → POST /api/merge
+  $('.dub-confirm__ok').trigger('click');
+  const post = ajaxCalls.find((c) => c.method === 'POST');
+  assert(!!post, 'выполнен POST-запрос объединения');
+  assert(/\/api\/merge\?account_id=777$/.test((post && post.url) || ''), 'URL /api/merge с account_id');
+  const body = JSON.parse((post && post.data) || '{}');
+  assert(body.master_amo_id === 123 && String(body.duplicate_amo_id) === '201',
+    'master = текущая карточка (123), duplicate = выбранная (201)');
+  assert(body.entity_type === 'leads', 'передан entity_type');
+  assert(body.author_user_id === 101, 'передан author_user_id текущего пользователя');
+  assert(post.headers && post.headers['X-Security-Key'] === 'k', 'передан X-Security-Key');
+  // после успеха модалки закрыты, показан тост
+  assert($('.dub-confirm__ok').length === 0 && $('.dub-dups__merge').length === 0,
+    'после объединения модалки закрыты');
 }
 
 section('Плашка: сущность ещё не проиндексирована');
