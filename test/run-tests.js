@@ -1,9 +1,13 @@
 /**
- * Локальный тестовый стенд для widget/script.js — каркас (этап 2).
+ * Локальный тестовый стенд для widget/script.js (Этап 3: проверка дублей).
  *
  * Эмулирует окружение amoCRM: jsdom + jQuery, заглушки Modal и глобального
- * AMOCRM, перехват $.ajax. Покрывает базовый каркас:
- *   1) render() рисует плашку-заглушку в карточке lcard/ccard/comcard;
+ * AMOCRM, настраиваемый перехват $.ajax. Покрывает:
+ *   1) render() рисует плашку в карточке lcard/ccard/comcard;
+ *   1в) checkDuplicates() делает GET /api/duplicates с account_id/entity_type/
+ *       amo_id и заголовком X-Security-Key; без настройки запросов нет;
+ *   1г) плашка отражает ответ: найдено N (активная «Открыть» + модалка со
+ *       списком), не проиндексировано, ошибка;
  *   2) detectEntity() определяет сущность по area и по URL;
  *   3) ключи i18n ru.json и en.json совпадают по структуре;
  *   4) destroy() очищает добавленный DOM/слушатели.
@@ -27,13 +31,15 @@ const $ = jqueryModule.fn ? jqueryModule : jqueryModule(dom.window);
 
 /* ----------------------------- заглушки amoCRM ----------------------------- */
 
+let accountConstant = { id: 777 };
+
 global.AMOCRM = {
   constant(key) {
     if (key === 'user') {
       return { id: 101, name: 'Viktor Borisenko' };
     }
     if (key === 'account') {
-      return {};
+      return accountConstant;
     }
     if (key === 'managers') {
       return {};
@@ -57,18 +63,27 @@ class ModalStub {
   }
 }
 
-// На каркасе виджет не ходит в API, но $.ajax-роутер оставляем заглушкой,
-// чтобы любой будущий/случайный вызов не падал и был виден в ajaxCalls.
+// Перехват $.ajax: фиксируем вызовы и отдаём настраиваемый ответ.
+// ajaxResponse — тело успешного ответа /api/duplicates; ajaxShouldFail → ветка .fail().
 let ajaxCalls = [];
+let ajaxResponse = { entity: { indexed: true }, count: 0, duplicates: [] };
+let ajaxShouldFail = false;
 
 $.ajax = function (opts) {
   ajaxCalls.push(opts);
+  const failing = ajaxShouldFail;
+  const resp = ajaxResponse;
   return {
     done(cb) {
-      cb({});
+      if (!failing) {
+        cb(resp);
+      }
       return this;
     },
-    fail() {
+    fail(cb) {
+      if (failing) {
+        cb({});
+      }
       return this;
     }
   };
@@ -87,23 +102,29 @@ const enLang = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'widget', '
 
 let allWidgets = [];
 
-function makeWidget(area, url) {
-  if (url) {
+function makeWidget(area, opts) {
+  if (typeof opts === 'string') {
+    opts = { url: opts }; // обратная совместимость: 2-й аргумент-строка = url
+  }
+  opts = opts || {};
+  if (opts.url) {
     // переопределяем pathname для проверки URL-фолбэка detectEntity
-    Object.defineProperty(dom.window.document, 'URL', { value: url, configurable: true });
+    Object.defineProperty(dom.window.document, 'URL', { value: opts.url, configurable: true });
     try {
-      dom.reconfigure({ url: url });
+      dom.reconfigure({ url: opts.url });
     } catch (e) { /* старые версии jsdom */ }
   }
   const widget = new CustomWidget();
   allWidgets.push(widget);
   widget.langs = ruLang;
-  widget.get_settings = () => ({ backend_url: '', security_key: '' });
+  // по умолчанию бэкенд настроен (URL + ключ); account_id берётся из AMOCRM.constant
+  const settings = opts.settings || { backend_url: 'https://api.test', security_key: 'k' };
+  widget.get_settings = () => settings;
   widget.system = () => ({ area: area === undefined ? 'lcard-1' : area });
   widget.params = { widget_code: 'dubli' };
-  widget.render_template = (opts) => {
+  widget.render_template = (tpl) => {
     $('#card-zone').remove();
-    $('<div id="card-zone"></div>').html(opts.body).appendTo(document.body);
+    $('<div id="card-zone"></div>').html(tpl.body).appendTo(document.body);
   };
   return widget;
 }
@@ -113,6 +134,9 @@ function resetEnv() {
     try { w.callbacks.destroy(); } catch (e) { /* уже уничтожен */ }
   });
   ajaxCalls = [];
+  ajaxResponse = { entity: { indexed: true }, count: 0, duplicates: [] };
+  ajaxShouldFail = false;
+  accountConstant = { id: 777 };
   modals.splice(0).forEach((modal) => modal.destroyed || modal.$body.remove());
   $('.dub-toast').remove();
   $('#card-zone').remove();
@@ -168,13 +192,82 @@ section('Вне карточки плашка не рисуется');
   assert($('#card-zone').length === 0, 'плашка не отрисована в settings');
 }
 
-/* 1в. checkDuplicates — заглушка, без сетевых запросов */
-section('Заглушка checkDuplicates без запросов к API');
+/* 1в. checkDuplicates обращается к бэкенду при настроенном URL/ключе/account_id */
+section('checkDuplicates: запрос к GET /api/duplicates');
 {
   resetEnv();
   const widget = makeWidget('lcard-1');
   widget.callbacks.render();
-  assert(ajaxCalls.length === 0, 'каркас не выполняет запросов к API/бэкенду');
+  assert(ajaxCalls.length === 1, 'настроенный бэкенд → один запрос');
+  const call = ajaxCalls[0] || {};
+  assert(/\/api\/duplicates$/.test(call.url || ''), 'URL оканчивается на /api/duplicates');
+  assert(call.method === 'GET', 'метод GET');
+  assert(call.data && String(call.data.account_id) === '777', 'передан account_id из AMOCRM.constant');
+  assert(call.data && call.data.entity_type === 'leads' && String(call.data.amo_id) === '123',
+    'переданы entity_type=leads и amo_id=123');
+  assert(call.headers && call.headers['X-Security-Key'] === 'k', 'передан заголовок X-Security-Key');
+}
+
+section('checkDuplicates: без настройки бэкенда запросов нет');
+{
+  resetEnv();
+  const widget = makeWidget('lcard-1', { settings: { backend_url: '', security_key: '' } });
+  widget.callbacks.render();
+  assert(ajaxCalls.length === 0, 'бэкенд не настроен → запросов нет');
+  assert($('#card-zone .dub__status').text().indexOf(ruLang.card.not_configured) !== -1,
+    'показан статус «Бэкенд не настроен»');
+  assert($('#card-zone .dub__open').prop('disabled'), '«Открыть» неактивна без настройки');
+}
+
+/* 1г. Плашка отражает ответ бэкенда */
+section('Плашка: найдены дубли → активная «Открыть» + модалка со списком');
+{
+  resetEnv();
+  ajaxResponse = {
+    entity: { entity_type: 'leads', amo_id: '123', indexed: true },
+    count: 2,
+    duplicates: [
+      { amo_id: '201', name: 'Иван Петров', matched_keys: [{ key_type: 'phone', key_norm: '9991112233' }], matched_rules: [] },
+      { amo_id: '202', name: null, matched_keys: [{ key_type: 'email', key_norm: 'a@b.ru' }], matched_rules: ['email'] }
+    ]
+  };
+  const widget = makeWidget('lcard-1');
+  widget.callbacks.render();
+  widget.callbacks.bind_actions();
+  assert($('#card-zone .dub__status_found').length === 1, 'статус «найдены дубли»');
+  assert($('#card-zone .dub__status').text().indexOf('2') !== -1, 'в статусе показано число дублей');
+  assert(!$('#card-zone .dub__open').prop('disabled'), '«Открыть» активна при найденных дублях');
+  assert($('#card-zone .dub__merge').prop('disabled'), '«Объединить» по-прежнему неактивна (слияние — след. слой)');
+
+  $('#card-zone .dub__open').trigger('click');
+  const $modal = $('.modal-stub');
+  assert($modal.find('.dub-dups__item').length === 2, 'в модалке два дубля');
+  assert($modal.find('.dub-dups__link').first().text() === 'Иван Петров', 'имя дубля — ссылка');
+  assert($modal.find('.dub-dups__link').first().attr('href') === '/leads/detail/201',
+    'ссылка ведёт на карточку дубля');
+  assert($modal.find('.dub-dups__link').eq(1).text() === '#202', 'без имени показывается #amo_id');
+  assert($modal.text().indexOf('phone: 9991112233') !== -1, 'показан совпавший ключ');
+}
+
+section('Плашка: сущность ещё не проиндексирована');
+{
+  resetEnv();
+  ajaxResponse = { entity: { indexed: false }, count: 0, duplicates: [] };
+  const widget = makeWidget('lcard-1');
+  widget.callbacks.render();
+  assert($('#card-zone .dub__status').text().indexOf(ruLang.card.not_indexed) !== -1,
+    'статус «ещё не проиндексировано»');
+  assert($('#card-zone .dub__open').prop('disabled'), '«Открыть» неактивна');
+}
+
+section('Плашка: ошибка запроса к бэкенду');
+{
+  resetEnv();
+  ajaxShouldFail = true;
+  const widget = makeWidget('lcard-1');
+  widget.callbacks.render();
+  assert($('#card-zone .dub__status_error').length === 1, 'показан статус ошибки');
+  assert($('#card-zone .dub__open').prop('disabled'), '«Открыть» неактивна при ошибке');
 }
 
 /* 2. detectEntity по area и по URL */

@@ -1,17 +1,16 @@
 /**
- * Виджет «Поиск и объединение дублей» для amoCRM — КАРКАС (этап 2).
+ * Виджет «Поиск и объединение дублей» для amoCRM (Этап 3: проверка дублей).
  *
  * Назначение: находить и объединять дубликаты контактов, компаний и сделок.
- * Это только устанавливаемый каркас фронтенда, проходящий валидацию амоМаркета:
- *   - в карточке сделки/контакта/компании рисуется плашка-заглушка
- *     «Проверка дублей» в состоянии «дублей не найдено» с неактивными
- *     кнопками «Открыть»/«Объединить»;
+ *   - в карточке сделки/контакта/компании рисуется плашка «Проверка дублей»:
+ *     при настроенном бэкенде делает запрос GET {backend_url}/api/duplicates и
+ *     показывает результат («проверяем…» → «найдено N» / «дублей не найдено»);
+ *     кнопка «Открыть» показывает список возможных дублей в модалке;
  *   - экран настроек содержит статический скелет секций (сущности, правила
  *     поиска, нормализация, права на объединение, запрет дублей).
  *
- * БИЗНЕС-ЛОГИКИ НЕТ: реальный поиск/объединение дублей и серверная часть
- * (OAuth-сервер, вебхуки, БД) появятся на следующем этапе (Этап 3).
- * Все пользовательские строки берутся из i18n через t().
+ * Объединение дублей пока недоступно (кнопка «Объединить» неактивна): движок
+ * слияния на бэкенде — следующий слой. Все строки берутся из i18n через t().
  *
  * UX-паттерны (AMD-конструктор, callbacks, render_template, модалки поверх
  * lib/components/base/modal, инлайн-стиль с меткой сборки) повторяют
@@ -24,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-06-13.1';
+    var WIDGET_BUILD = '2026-06-16.1';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -115,6 +114,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub__status svg{flex-shrink:0}',
         '.dub__status_ok{color:#1f9d57}',
         '.dub__status_found{color:#e0a500}',
+        '.dub__status_error{color:#e05c5c}',
         '.dub__actions{display:flex;gap:8px}',
         '.dub__btn{flex:1;box-sizing:border-box;padding:8px 10px;border:1px solid #d4d7da;border-radius:3px;background:#fff;color:#313942;font-size:13px;cursor:pointer;text-align:center}',
         '.dub__btn:hover:not(:disabled){background:#f5f6f7}',
@@ -128,6 +128,14 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         /* модальные окна */
         '.dub-modal{padding:25px 30px;box-sizing:border-box}',
         '.dub-modal__title{font-size:18px;color:#313942;margin:0 0 18px;font-weight:normal}',
+        /* список возможных дублей в модалке */
+        '.dub-dups{max-height:50vh;overflow:auto}',
+        '.dub-dups__item{padding:8px 0;border-bottom:1px solid #eef1f4}',
+        '.dub-dups__item:last-child{border-bottom:none}',
+        '.dub-dups__link{color:#2b7de9;text-decoration:none;font-size:14px}',
+        '.dub-dups__link:hover{text-decoration:underline}',
+        '.dub-dups__id{color:#92989b;font-size:12px;margin-left:6px}',
+        '.dub-dups__keys{font-size:12px;color:#62696e;margin-top:3px}',
         /* скелет настроек */
         '.dub-settings{margin:0 0 15px}',
         '.dub-settings__hint{font-size:13px;color:#92989b;margin-bottom:14px;line-height:17px}',
@@ -154,6 +162,12 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var OK_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
       '<circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>' +
       '<path d="M5 8.2l2 2 4-4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    // Иконка «найдены возможные дубли»: восклицательный знак в круге
+    var WARN_SVG = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>' +
+      '<path d="M8 4.6v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
+      '<circle cx="8" cy="11.2" r="0.9" fill="currentColor"/></svg>';
 
     function showToast(message, isError) {
       injectStyles();
@@ -217,44 +231,173 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
 
     /* ----------------------------- проверка дублей ----------------------------- */
 
-    // Заглушка проверки дублей: сразу сообщает «дублей нет».
-    // TODO (Этап 3): запрос к backend_url, реалтайм-проверка дублей по индексу
+    function getSettings() {
+      try {
+        return self.get_settings() || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    // account_id аккаунта amoCRM — нужен бэкенду для изоляции данных.
+    function accountId() {
+      try {
+        var acc = AMOCRM.constant('account') || {};
+        return acc.id != null ? String(acc.id) : '';
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function backendBase() {
+      return String(getSettings().backend_url || '').replace(/\/+$/, '');
+    }
+
+    // Проверять дубли можно, только когда заданы URL бэкенда, ключ и известен account_id.
+    function isConfigured() {
+      return !!(backendBase() && getSettings().security_key && accountId());
+    }
+
+    // Реальная проверка дублей: GET {backend_url}/api/duplicates (поиск по индексу бэкенда).
     function checkDuplicates(entity, callback) {
-      callback({ found: false, items: [] });
+      if (!isConfigured()) {
+        callback({ ok: false, reason: 'not_configured' });
+        return;
+      }
+      $.ajax({
+        url: backendBase() + '/api/duplicates',
+        method: 'GET',
+        dataType: 'json',
+        data: { account_id: accountId(), entity_type: entity.type, amo_id: entity.id },
+        headers: { 'X-Security-Key': getSettings().security_key }
+      }).done(function (resp) {
+        resp = resp || {};
+        var items = resp.duplicates || [];
+        var indexed = !resp.entity || resp.entity.indexed !== false;
+        callback({
+          ok: true,
+          indexed: indexed,
+          count: resp.count != null ? resp.count : items.length,
+          items: items
+        });
+      }).fail(function () {
+        callback({ ok: false, reason: 'error' });
+      });
     }
 
     /* ---------------------------- блок в карточке ---------------------------- */
 
-    function renderCardWidget() {
-      injectStyles();
-      var entity = detectEntity();
+    // Текст, css-класс и иконка статуса по состоянию проверки.
+    function statusFor(state) {
+      switch (state.status) {
+        case 'found':
+          return {
+            text: t('card.found', 'Найдены возможные дубли') + ' (' + state.count + ')',
+            cls: 'dub__status_found',
+            icon: WARN_SVG
+          };
+        case 'no_dups':
+          return { text: t('card.no_dups', 'Дублей не найдено'), cls: 'dub__status_ok', icon: OK_SVG };
+        case 'checking':
+          return { text: t('card.checking', 'Проверяем дубли…'), cls: '', icon: '' };
+        case 'not_indexed':
+          return { text: t('card.not_indexed', 'Ещё не проиндексировано'), cls: '', icon: '' };
+        case 'not_configured':
+          return { text: t('card.not_configured', 'Бэкенд не настроен'), cls: '', icon: '' };
+        case 'no_entity':
+          return { text: t('card.no_entity', 'Не удалось определить карточку'), cls: '', icon: '' };
+        default:
+          return { text: t('card.check_failed', 'Не удалось проверить дубли'), cls: 'dub__status_error', icon: '' };
+      }
+    }
 
-      // Состояние «дублей не найдено»: заголовок, статус и неактивные кнопки.
-      // checkDuplicates — заглушка (см. выше); реальную проверку добавит Этап 3.
-      var statusHtml = '<div class="dub__status dub__status_ok">' + OK_SVG +
-        '<span>' + escapeHtml(t('card.no_dups', 'Дублей не найдено')) + '</span></div>';
-
-      var html = '<div class="dub" data-entity="' + escapeHtml(entity ? entity.type : '') + '">' +
+    function cardHtml(entity, state) {
+      var st = statusFor(state);
+      var statusHtml = '<div class="dub__status ' + st.cls + '">' + st.icon +
+        '<span>' + escapeHtml(st.text) + '</span></div>';
+      // «Открыть» активна только при найденных дублях; «Объединить» — пока всегда
+      // неактивна (движок слияния на бэкенде это следующий слой).
+      var openDisabled = state.status === 'found' ? '' : ' disabled';
+      return '<div class="dub" data-entity="' + escapeHtml(entity ? entity.type : '') + '">' +
         '<div class="dub__banner">' + LOGO_SVG + '<span>KO:AGENCY</span></div>' +
         statusHtml +
         '<div class="dub__actions">' +
-          '<button type="button" class="dub__btn dub__open" disabled>' +
+          '<button type="button" class="dub__btn dub__open"' + openDisabled + '>' +
             escapeHtml(t('card.open', 'Открыть')) + '</button>' +
           '<button type="button" class="dub__btn dub__btn_primary dub__merge" disabled>' +
             escapeHtml(t('card.merge', 'Объединить')) + '</button>' +
         '</div>' +
         '</div>';
+    }
 
+    function renderCard(entity, state) {
       self.render_template({
         caption: { class_name: 'dub-card' },
-        body: html,
+        body: cardHtml(entity, state),
         render: ''
       });
+    }
 
-      // Заглушка-проверка: оставляет состояние «нет дублей». Сетевых запросов нет.
-      if (entity) {
-        checkDuplicates(entity, function () { /* Этап 3: обновление плашки по результату */ });
+    function renderCardWidget() {
+      injectStyles();
+      var entity = detectEntity();
+      self._dups = [];
+      self._entity = entity;
+
+      if (!entity) {
+        renderCard(null, { status: 'no_entity' });
+        return;
       }
+      if (!isConfigured()) {
+        renderCard(entity, { status: 'not_configured' });
+        return;
+      }
+
+      // Сначала «проверяем…», затем обновляем плашку по ответу бэкенда.
+      renderCard(entity, { status: 'checking' });
+      checkDuplicates(entity, function (res) {
+        var state;
+        if (!res.ok) {
+          state = { status: res.reason === 'not_configured' ? 'not_configured' : 'error' };
+        } else if (!res.indexed) {
+          state = { status: 'not_indexed' };
+        } else if (res.count > 0) {
+          self._dups = res.items;
+          state = { status: 'found', count: res.count };
+        } else {
+          state = { status: 'no_dups' };
+        }
+        renderCard(entity, state);
+      });
+    }
+
+    /* ------------------------- список дублей (модалка) ------------------------- */
+
+    // Модалка со списком возможных дублей: имя-ссылка на карточку + совпавшие ключи.
+    function openDuplicatesModal() {
+      var items = self._dups || [];
+      var entity = self._entity;
+      if (!items.length) {
+        return;
+      }
+      var rows = items.map(function (d) {
+        var name = d.name || ('#' + d.amo_id);
+        var href = '/' + (entity ? entity.type : '') + '/detail/' + encodeURIComponent(d.amo_id);
+        var keys = (d.matched_keys || []).map(function (k) {
+          return escapeHtml(k.key_type + ': ' + k.key_norm);
+        }).join(', ');
+        return '<div class="dub-dups__item">' +
+          '<a class="dub-dups__link" href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' +
+            escapeHtml(name) + '</a>' +
+          '<span class="dub-dups__id">#' + escapeHtml(d.amo_id) + '</span>' +
+          (keys ? '<div class="dub-dups__keys">' +
+            escapeHtml(t('card.matched_by', 'Совпадение по')) + ': ' + keys + '</div>' : '') +
+          '</div>';
+      }).join('');
+      var html = '<div class="dub-modal__title">' +
+        escapeHtml(t('card.dups_title', 'Возможные дубли')) + '</div>' +
+        '<div class="dub-dups">' + rows + '</div>';
+      openYpModal('dub-dups-modal', html);
     }
 
     /* ------------------------- скелет экрана настроек ------------------------- */
@@ -331,12 +474,15 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       bind_actions: function () {
         // Делегированные обработчики переживают перерисовки карточки,
         // неймспейс .dub защищает от дублей при повторных вызовах bind_actions.
-        // Пока кнопки неактивны (заглушка) — слушатели-заглушки на будущее.
-        // TODO (Этап 3): открыть список дублей / запустить объединение.
+        // «Открыть» → список дублей; «Объединить» пока неактивна (слияние — след. слой).
         $(document)
           .off('click.dub')
-          .on('click.dub', '.dub__open', function () { /* Этап 3 */ })
-          .on('click.dub', '.dub__merge', function () { /* Этап 3 */ });
+          .on('click.dub', '.dub__open', function () {
+            if (!$(this).prop('disabled')) {
+              openDuplicatesModal();
+            }
+          })
+          .on('click.dub', '.dub__merge', function () { /* слияние — следующий слой */ });
         return true;
       },
 

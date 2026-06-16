@@ -17,12 +17,30 @@ function levelsFor(min: string): LogLevel[] {
   return idx === -1 ? LEVELS : order.slice(idx);
 }
 
+// Виджет вызывает /api из браузера на домене amoCRM/Kommo. Аутентификация по
+// security_key (не по cookie), поэтому credentials не нужны, а origin ограничиваем
+// доменами amoCRM/Kommo. Запрос без Origin (curl/сервер) тоже допускаем.
+const ALLOWED_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*(amocrm\.(ru|com)|kommo\.com)$/i;
+function corsOrigin(
+  origin: string | undefined,
+  cb: (err: Error | null, allow?: boolean) => void,
+): void {
+  cb(null, !origin || ALLOWED_ORIGIN.test(origin));
+}
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
     logger: levelsFor(process.env.LOG_LEVEL ?? 'log'),
   });
 
   app.use(helmet());
+  app.enableCors({
+    origin: corsOrigin,
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'X-Security-Key'],
+    credentials: false,
+    maxAge: 86400,
+  });
   // amoCRM присылает вебхуки как application/x-www-form-urlencoded c вложенными массивами.
   app.use(urlencoded({ extended: true, limit: '1mb' }));
   app.use(json({ limit: '1mb' }));

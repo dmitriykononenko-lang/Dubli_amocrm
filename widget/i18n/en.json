@@ -9,6 +9,11 @@
     "checking": "Checking duplicates…",
     "no_dups": "No duplicates found",
     "found": "Possible duplicates found",
+    "not_indexed": "Not indexed yet",
+    "not_configured": "Backend not configured",
+    "check_failed": "Couldn't check duplicates",
+    "dups_title": "Possible duplicates",
+    "matched_by": "Matched by",
     "open": "Open",
     "merge": "Merge",
     "no_entity": "Cannot detect card"
