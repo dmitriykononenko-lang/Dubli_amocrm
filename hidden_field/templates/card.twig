@@ -1,0 +1,9 @@
+{# Небольшая панель в карточке: статус движка скрытия. #}
+<div class="hf-card">
+  <div class="hf-card__row">
+    <span class="hf-card__label">Hidden Field</span>
+    <span class="hf-card__status">
+      {% if state.active %}активно{% else %}не настроено{% endif %}
+    </span>
+  </div>
+</div>

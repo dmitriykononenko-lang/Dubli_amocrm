@@ -1,0 +1,54 @@
+{# Матрица «поле × сотрудник». Клик по ячейке циклически меняет режим. #}
+<div class="hf-matrix-wrap">
+  <div class="hf-legend">
+    O — открыть · S — скрыть · * — звёздочки · B — блокировать · V — воронка
+  </div>
+
+  <table class="js-hf-matrix hf-matrix">
+    <thead>
+      <tr>
+        <th class="hf-corner">Поле \ Сотрудник</th>
+        {% for user in meta.users %}
+          <th class="hf-user">
+            <div class="hf-user__name">{{ user.name }}</div>
+            <div class="hf-col-modes">
+              {% for m in modes %}
+                <span class="js-hf-col-mode hf-mode-btn" data-mode="{{ m }}">{{ m }}</span>
+              {% endfor %}
+            </div>
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for field in meta.fields %}
+        <tr>
+          <th class="hf-field">
+            <span class="hf-field__name">{{ field.name }}</span>
+            <span class="hf-field__entity">{{ field.entity }}</span>
+            <span class="hf-row-modes">
+              {% for m in modes %}
+                <span class="js-hf-row-mode hf-mode-btn" data-mode="{{ m }}">{{ m }}</span>
+              {% endfor %}
+            </span>
+          </th>
+          {% for user in meta.users %}
+            {% set key = field.id ~ ':' ~ user.id %}
+            {% set val = meta.matrix[key] | default('O') %}
+            <td>
+              <span class="js-hf-cell hf-cell"
+                    data-key="{{ key }}"
+                    data-field="{{ field.id }}"
+                    data-user="{{ user.id }}"
+                    data-mode="{{ val }}">{{ val }}</span>
+            </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="hf-actions">
+    <button class="js-hf-save button-input button-input_blue">Сохранить</button>
+  </div>
+</div>
