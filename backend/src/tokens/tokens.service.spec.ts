@@ -43,11 +43,14 @@ describe('TokensService', () => {
 
   it('save шифрует токены и хранит составной nonce (24 байта)', async () => {
     const { service, store } = makeService();
-    await service.save('1', { accessToken: 'A', refreshToken: 'R', expiresIn: 86400 });
+    // Отличимый sentinel: ищем его как подпоследовательность байт в шифртексте.
+    // (Проверять отсутствие одного символа в случайном GCM-шифртексте нельзя — флай.)
+    const accessToken = 'PLAINTEXT_ACCESS_TOKEN_SENTINEL';
+    await service.save('1', { accessToken, refreshToken: 'R', expiresIn: 86400 });
     expect(store.row.nonce).toHaveLength(24);
     expect(Buffer.isBuffer(store.row.access_token_enc)).toBe(true);
     // в открытом виде токенов нет
-    expect(store.row.access_token_enc.toString('utf8')).not.toContain('A');
+    expect(store.row.access_token_enc.includes(Buffer.from(accessToken, 'utf8'))).toBe(false);
   });
 
   it('getValidAccessToken возвращает расшифрованный access, пока он свежий', async () => {
