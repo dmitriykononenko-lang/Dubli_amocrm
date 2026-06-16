@@ -65,11 +65,55 @@ export class AmocrmHttpClient {
     path: string,
     accessToken: string,
   ): Promise<T> {
+    return this.apiRequest<T>('GET', subdomain, accountKey, path, accessToken);
+  }
+
+  /** Авторизованный PATCH (обновление сущности). */
+  async apiPatch<T>(
+    subdomain: string,
+    accountKey: string,
+    path: string,
+    accessToken: string,
+    body: unknown,
+  ): Promise<T> {
+    return this.apiRequest<T>('PATCH', subdomain, accountKey, path, accessToken, body);
+  }
+
+  /** Авторизованный POST (создание/связывание). */
+  async apiPost<T>(
+    subdomain: string,
+    accountKey: string,
+    path: string,
+    accessToken: string,
+    body: unknown,
+  ): Promise<T> {
+    return this.apiRequest<T>('POST', subdomain, accountKey, path, accessToken, body);
+  }
+
+  /** Авторизованный DELETE (удаление сущности). */
+  async apiDelete<T>(
+    subdomain: string,
+    accountKey: string,
+    path: string,
+    accessToken: string,
+  ): Promise<T> {
+    return this.apiRequest<T>('DELETE', subdomain, accountKey, path, accessToken);
+  }
+
+  private async apiRequest<T>(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    subdomain: string,
+    accountKey: string,
+    path: string,
+    accessToken: string,
+    body?: unknown,
+  ): Promise<T> {
     await this.throttlerFor(accountKey).acquire();
     return withRetry(async () => {
       const res = await request(`${this.baseUrl(subdomain)}${path}`, {
-        method: 'GET',
+        method,
         headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
       if (res.statusCode === 429 || res.statusCode >= 500) {
         const ra = Number(res.headers['retry-after']);
@@ -81,7 +125,9 @@ export class AmocrmHttpClient {
       if (res.statusCode >= 400) {
         throw new Error(`amoCRM API ${res.statusCode}: ${await res.body.text()}`);
       }
-      return (await res.body.json()) as T;
+      // DELETE и некоторые ответы могут быть с пустым телом.
+      const text = await res.body.text();
+      return (text ? JSON.parse(text) : undefined) as T;
     });
   }
 }

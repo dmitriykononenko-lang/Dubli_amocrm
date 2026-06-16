@@ -8,6 +8,7 @@ import { OauthModule } from './auth/oauth/oauth.module';
 import { EntitiesModule } from './entities/entities.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { DuplicatesModule } from './duplicates/duplicates.module';
+import { MergeModule } from './merge/merge.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { HealthModule } from './health/health.module';
     EntitiesModule,
     WebhooksModule,
     DuplicatesModule,
+    MergeModule,
     HealthModule,
   ],
 })

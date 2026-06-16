@@ -105,6 +105,7 @@ export interface MergeJournalTable {
   mode: MergeMode;
   author_user_id: BigIntStr | null;
   transferred: JsonbDefault<Record<string, unknown>>;
+  rolled_back_at: TsNullable;
   created_at: TsDefault;
 }
 

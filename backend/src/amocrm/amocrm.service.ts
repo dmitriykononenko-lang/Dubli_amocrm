@@ -5,10 +5,17 @@ import { AccountsService } from '../accounts/accounts.service';
 import { toPlural } from '../common/entity-type.util';
 import type { EntityType } from '../common/db/database.types';
 
+/** Связь сущности amoCRM (для переноса при объединении). */
+export interface AmoLink {
+  to_entity_id: number;
+  to_entity_type: string;
+  metadata?: Record<string, unknown>;
+}
+
 /**
  * Высокоуровневый клиент amoCRM: подставляет subdomain и валидный access-токен.
- * В ядре используется для точечного обогащения (если в вебхуке мало полей);
- * листинги/пагинация — на этапе массового сканирования.
+ * Используется для обогащения (вебхуки) и для операций объединения дублей
+ * (чтение, обновление, перенос связей, удаление, восстановление при откате).
  */
 @Injectable()
 export class AmocrmService {
@@ -19,10 +26,81 @@ export class AmocrmService {
   ) {}
 
   async getById<T = unknown>(accountId: string, entityType: EntityType, amoId: string): Promise<T> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const path = `/api/v4/${toPlural(entityType)}/${amoId}`;
+    return this.http.apiGet<T>(subdomain, accountId, path, accessToken);
+  }
+
+  /** Частичное обновление сущности (PATCH). */
+  async update<T = unknown>(
+    accountId: string,
+    entityType: EntityType,
+    amoId: string,
+    payload: Record<string, unknown>,
+  ): Promise<T> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const path = `/api/v4/${toPlural(entityType)}/${amoId}`;
+    return this.http.apiPatch<T>(subdomain, accountId, path, accessToken, payload);
+  }
+
+  /** Удаление сущности (используется при объединении для дубля). */
+  async remove(accountId: string, entityType: EntityType, amoId: string): Promise<void> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const path = `/api/v4/${toPlural(entityType)}/${amoId}`;
+    await this.http.apiDelete(subdomain, accountId, path, accessToken);
+  }
+
+  /** Связи сущности (links API v4). */
+  async getLinks(accountId: string, entityType: EntityType, amoId: string): Promise<AmoLink[]> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const path = `/api/v4/${toPlural(entityType)}/${amoId}/links`;
+    const res = await this.http.apiGet<{ _embedded?: { links?: AmoLink[] } }>(
+      subdomain,
+      accountId,
+      path,
+      accessToken,
+    );
+    return res?._embedded?.links ?? [];
+  }
+
+  /** Привязка связей к сущности (перенос связей дубля на главную запись). */
+  async link(
+    accountId: string,
+    entityType: EntityType,
+    amoId: string,
+    links: AmoLink[],
+  ): Promise<void> {
+    if (links.length === 0) return;
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const path = `/api/v4/${toPlural(entityType)}/${amoId}/link`;
+    await this.http.apiPost(subdomain, accountId, path, accessToken, links);
+  }
+
+  /** Создание сущности из снимка (восстановление дубля при откате). Возвращает новый amo_id. */
+  async create(
+    accountId: string,
+    entityType: EntityType,
+    payload: Record<string, unknown>,
+  ): Promise<string> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const plural = toPlural(entityType);
+    const res = await this.http.apiPost<{ _embedded?: Record<string, Array<{ id: number }>> }>(
+      subdomain,
+      accountId,
+      `/api/v4/${plural}`,
+      accessToken,
+      [payload],
+    );
+    const created = res?._embedded?.[plural]?.[0];
+    if (!created?.id) throw new Error('amoCRM не вернул id созданной сущности');
+    return String(created.id);
+  }
+
+  /** Резолв subdomain + валидного access-токена для аккаунта. */
+  private async ctx(accountId: string): Promise<{ subdomain: string; accessToken: string }> {
     const account = await this.accounts.findById(accountId);
     if (!account) throw new NotFoundException('Аккаунт не найден');
     const accessToken = await this.tokens.getValidAccessToken(accountId);
-    const path = `/api/v4/${toPlural(entityType)}/${amoId}`;
-    return this.http.apiGet<T>(account.subdomain, accountId, path, accessToken);
+    return { subdomain: account.subdomain, accessToken };
   }
 }

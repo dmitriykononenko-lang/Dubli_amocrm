@@ -28,7 +28,7 @@ accounts (1) ─┬─ (1) oauth_tokens
 | **entities** | Реплика ключевых полей сущностей | `entity_type`, `amo_id`, `key_fields`; UNIQUE(`account_id`,`entity_type`,`amo_id`) |
 | **entity_keys** | Нормализованные ключи поиска дублей | `key_type`, `key_hash`, `key_norm`; индекс(`account_id`,`entity_type`,`key_type`,`key_hash`) |
 | **rules** | Правила поиска (поля + AND/OR) | `entity_type`, `fields`, `operator`, `auto_merge`, `enabled` |
-| **merge_journal** | Журнал объединений | `master_amo_id`, `duplicate_amo_id`, `mode`, `author_user_id`, `transferred` |
+| **merge_journal** | Журнал объединений | `master_amo_id`, `duplicate_amo_id`, `mode`, `author_user_id`, `transferred`, `rolled_back_at` |
 | **snapshots** | Снимки дублей для отката (30 дней) | `merge_id`, `amo_id`, `payload`, `expires_at` |
 | **scan_jobs** | Фоновые задачи массового сканирования | `status`, `progress`, `total`, `cursor`, `params` |
 | **webhook_events** | Идемпотентность приёма вебхуков | PK(`account_id`,`event_id`), `type`, `processed_at` |

@@ -13,8 +13,10 @@
 - Сервис нормализации ключей (телефон/email/ИНН/имя → `key_hash`).
 - Поиск дублей для плашки виджета: `GET /api/duplicates` — обнаружение по общим
   нормализованным ключам с учётом правил аккаунта (AND/OR).
+- Объединение дублей: `POST /api/merge` (перенос полей/связей дубля → главную,
+  удаление дубля, журнал + снимки) и `POST /api/merge/:id/rollback` (откат).
 
-Слияние и фоновое сканирование — следующие этапы.
+Фоновое сканирование — следующий этап.
 
 ## API
 
@@ -54,6 +56,27 @@ curl 'http://localhost:3000/api/duplicates?account_id=123&entity_type=contact&am
 (`rules`) комбинируют ключи через AND/OR, между правилами — OR; без включённых правил
 дублем считается любая сущность с общим ключом. Если сущности ещё нет в индексе —
 `indexed: false`, `duplicates: []` (придёт после вебхука/сканирования).
+
+### `POST /api/merge` и `POST /api/merge/:id/rollback`
+
+Объединяет дубль с главной записью и позволяет откатить. Аутентификация — та же
+(`account_id` в query, `security_key` в заголовке/query). Тело — JSON.
+
+```bash
+curl -X POST 'http://localhost:3000/api/merge?account_id=123' \
+  -H 'X-Security-Key: <key>' -H 'Content-Type: application/json' \
+  -d '{"entity_type":"contact","master_amo_id":456,"duplicate_amo_id":789,"author_user_id":42}'
+# → { "mergeId": "1", "master_amo_id": "456", "duplicate_amo_id": "789",
+#     "transferred": { "name": false, "field_ids": [...], "links": 2 } }
+
+curl -X POST 'http://localhost:3000/api/merge/1/rollback?account_id=123' -H 'X-Security-Key: <key>'
+# → { "mergeId": "1", "master_amo_id": "456", "restored_duplicate_amo_id": "90001" }
+```
+
+Атомарного merge-API в amoCRM нет: данные дубля переносятся в главную (gap-fill полей +
+перенос связей), дубль удаляется, в `merge_journal`/`snapshots` пишется журнал и снимки.
+Откат — best-effort: amoCRM не возвращает прежний id, поэтому дубль воссоздаётся с **новым**
+id, поля главной возвращаются к снимку. (Точные эндпоинты links/delete сверить с докой amoCRM.)
 
 ## Требования
 

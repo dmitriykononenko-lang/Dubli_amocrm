@@ -125,8 +125,11 @@ CREATE TABLE IF NOT EXISTS merge_journal (
   mode             merge_mode  NOT NULL,
   author_user_id   BIGINT,                                 -- пользователь amoCRM (NULL при авто)
   transferred      JSONB       NOT NULL DEFAULT '{}'::jsonb,-- перенесённые связи (сделки/задачи/...)
+  rolled_back_at   TIMESTAMPTZ,                            -- когда объединение откатили (NULL — активно)
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- На случай применения к БД, созданной до добавления колонки отката.
+ALTER TABLE merge_journal ADD COLUMN IF NOT EXISTS rolled_back_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_merge_journal_account
   ON merge_journal (account_id, created_at DESC);
 
