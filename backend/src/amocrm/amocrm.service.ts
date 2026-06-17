@@ -4,6 +4,7 @@ import { TokensService } from '../tokens/tokens.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { toPlural } from '../common/entity-type.util';
 import type { EntityType } from '../common/db/database.types';
+import type { RawAmoEntity } from '../entities/field-extractor';
 
 /** Связь сущности amoCRM (для переноса при объединении). */
 export interface AmoLink {
@@ -11,6 +12,14 @@ export interface AmoLink {
   to_entity_type: string;
   metadata?: Record<string, unknown>;
 }
+
+/** Страница листинга для фонового сканирования. */
+export interface AmoPage {
+  items: RawAmoEntity[];
+  nextPath: string | null;
+}
+
+const SCAN_PAGE_LIMIT = 250; // максимум amoCRM v4
 
 /**
  * Высокоуровневый клиент amoCRM: подставляет subdomain и валидный access-токен.
@@ -29,6 +38,36 @@ export class AmocrmService {
     const { subdomain, accessToken } = await this.ctx(accountId);
     const path = `/api/v4/${toPlural(entityType)}/${amoId}`;
     return this.http.apiGet<T>(subdomain, accountId, path, accessToken);
+  }
+
+  /**
+   * Одна страница листинга сущностей (для фонового сканирования). path — курсор
+   * (pathname+search из _links.next); пусто → первая страница. Докачка по _links.next.
+   */
+  async listPage(
+    accountId: string,
+    entityType: EntityType,
+    path?: string | null,
+  ): Promise<AmoPage> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const plural = toPlural(entityType);
+    const reqPath = path && path.length > 0 ? path : `/api/v4/${plural}?limit=${SCAN_PAGE_LIMIT}`;
+    const res = await this.http.apiGet<{
+      _embedded?: Record<string, RawAmoEntity[]>;
+      _links?: { next?: { href: string } };
+    }>(subdomain, accountId, reqPath, accessToken);
+    const items = res?._embedded?.[plural] ?? [];
+    const nextHref = res?._links?.next?.href ?? null;
+    let nextPath: string | null = null;
+    if (nextHref) {
+      try {
+        const u = new URL(nextHref);
+        nextPath = u.pathname + u.search;
+      } catch {
+        nextPath = null;
+      }
+    }
+    return { items, nextPath };
   }
 
   /** Частичное обновление сущности (PATCH). */

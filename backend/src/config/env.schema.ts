@@ -25,6 +25,8 @@ export const envSchema = z.object({
 
   WEBHOOK_SECURITY_KEY: z.string().optional(),
   AMOCRM_RATE_LIMIT_RPS: z.coerce.number().positive().default(7),
+  // Период опроса очереди фоновых сканов (мс). 0 — фоновый процессор выключен.
+  SCAN_POLL_MS: z.coerce.number().int().min(0).default(2000),
 
   DATABASE_URL_TEST: z.string().optional(),
 });

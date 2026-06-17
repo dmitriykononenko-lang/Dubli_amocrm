@@ -48,4 +48,7 @@ export class AppConfigService {
   get rateLimitRps(): number {
     return this.get('AMOCRM_RATE_LIMIT_RPS');
   }
+  get scanPollMs(): number {
+    return this.get('SCAN_POLL_MS');
+  }
 }

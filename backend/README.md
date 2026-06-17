@@ -15,8 +15,9 @@
   нормализованным ключам с учётом правил аккаунта (AND/OR).
 - Объединение дублей: `POST /api/merge` (перенос полей/связей дубля → главную,
   удаление дубля, журнал + снимки) и `POST /api/merge/:id/rollback` (откат).
-
-Фоновое сканирование — следующий этап.
+- Конфигурирование: CRUD правил (`/api/rules`) и настройки дедупликации (`/api/settings`).
+- Фоновое массовое сканирование (`/api/scan`): постраничная индексация базы аккаунта
+  с прогрессом, паузой и докачкой по `_links.next`.
 
 ## API
 
@@ -77,6 +78,24 @@ curl -X POST 'http://localhost:3000/api/merge/1/rollback?account_id=123' -H 'X-S
 перенос связей), дубль удаляется, в `merge_journal`/`snapshots` пишется журнал и снимки.
 Откат — best-effort: amoCRM не возвращает прежний id, поэтому дубль воссоздаётся с **новым**
 id, поля главной возвращаются к снимку. (Точные эндпоинты links/delete сверить с докой amoCRM.)
+
+### Правила и настройки
+
+- `GET/POST/PATCH/DELETE /api/rules` — правила поиска (`entity_type`, `name`, `fields`
+  `[{key_type, field_id?}]`, `operator` AND/OR, `auto_merge`, `enabled`).
+- `GET/PUT /api/settings` — `entities` (contact/company/lead) и `prevent_create`
+  (хранятся в `accounts.settings.dedup`).
+
+### Фоновое сканирование
+
+- `POST /api/scan` `{ entity_type }` — поставить задачу; `GET /api/scan` — список;
+  `GET /api/scan/:id` — статус (`queued|running|paused|done|error`, `progress`);
+  `POST /api/scan/:id/pause` и `/resume` — пауза/докачка.
+
+Задачи обрабатывает фоновый процессор (период — `SCAN_POLL_MS`, 0 — выключен): за шаг
+индексируется одна страница amoCRM (с тем же движком, что и вебхуки), курсор `_links.next`
+сохраняется в `scan_jobs.cursor`. amoCRM v4 не отдаёт общий count — `total` заполняется по
+факту завершения.
 
 ## Требования
 
