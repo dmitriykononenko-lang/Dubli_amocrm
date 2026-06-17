@@ -8,6 +8,9 @@
     "backend_url": "Widget backend URL (https)",
     "api_token": "Backend access key (X-Security-Key header; matches API_SECURITY_KEY on the server)"
   },
+  "advanced": {
+    "title": "Field visibility matrix"
+  },
   "matrix": {
     "loading": "Loading settings matrix…",
     "save": "Save",

@@ -8,6 +8,9 @@
     "backend_url": "URL backend виджета (https)",
     "api_token": "Ключ доступа к backend (заголовок X-Security-Key; совпадает с API_SECURITY_KEY на сервере)"
   },
+  "advanced": {
+    "title": "Матрица видимости полей"
+  },
   "matrix": {
     "loading": "Загружаем матрицу настроек…",
     "save": "Сохранить",
