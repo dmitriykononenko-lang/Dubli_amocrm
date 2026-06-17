@@ -18,6 +18,10 @@ export class AccountsService {
     return this.repo.getSettings(accountId);
   }
 
+  updateSettings(accountId: string, settings: AccountSettings): Promise<void> {
+    return this.repo.updateSettings(accountId, settings);
+  }
+
   /** security_key для проверки вебхуков: из настроек аккаунта (приоритет над env-фолбэком). */
   async getSecurityKey(accountId: string): Promise<string | null> {
     const settings = await this.repo.getSettings(accountId);
