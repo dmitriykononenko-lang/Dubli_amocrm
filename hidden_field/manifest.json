@@ -33,16 +33,5 @@
       "type": "pass",
       "required": false
     }
-  },
-  "advanced": {
-    "engine_enabled": {
-      "name": "advanced.engine_enabled",
-      "type": "list",
-      "values": {
-        "1": "advanced.on",
-        "0": "advanced.off"
-      },
-      "default": "1"
-    }
   }
 }

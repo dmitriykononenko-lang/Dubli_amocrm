@@ -139,8 +139,6 @@ define(['jquery', 'lib/components/base/modal', 'underscore'], function ($, Modal
       if (!config) return;
       var user = AMOCRM.constant('user');
       if (user && user.is_admin) return;            // админ видит всё
-      var s = self.get_settings() || {};
-      if (s.engine_enabled === '0') return;
 
       // VERIFY: поле карточки с идентификатором поля в data-id / data-field-id
       $(root).find('[data-id][class*="field"], .linked-form__field[data-id], div[data-field-id]').each(function () {
