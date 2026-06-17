@@ -1,23 +1,19 @@
 {
   "widget": {
     "name": "widget.name",
-    "short_description": "widget.short_description",
     "description": "widget.description",
+    "short_description": "widget.short_description",
     "version": "1.0.0",
     "interface_version": 2,
     "init_once": false,
     "locale": ["ru", "en"],
-    "installation": "y",
+    "installation": true,
+    "oauth": "Y",
     "support": {
-      "link": "https://example.com/support",
-      "email": "support@example.com"
-    },
-    "code": "hidden_field_f5",
-    "secret_key": "REPLACE_WITH_SECRET_FROM_DEV_CABINET"
+      "link": "https://github.com/dmitriykononenko-lang/Dubli_amocrm",
+      "email": "partnerskoda@gmail.com"
+    }
   },
-
-  "oauth": "Y",
-
   "locations": [
     "lcard-1",
     "ccard-1",
@@ -26,7 +22,6 @@
     "advanced_settings",
     "everywhere"
   ],
-
   "settings": {
     "backend_url": {
       "name": "settings.backend_url",
@@ -39,7 +34,6 @@
       "required": false
     }
   },
-
   "advanced": {
     "engine_enabled": {
       "name": "advanced.engine_enabled",
@@ -50,9 +44,5 @@
       },
       "default": "1"
     }
-  },
-
-  "free": "Y",
-  "countries": ["*"],
-  "category": "automation"
+  }
 }
