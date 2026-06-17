@@ -64,15 +64,22 @@ class ModalStub {
 }
 
 // Перехват $.ajax: фиксируем вызовы и отдаём настраиваемый ответ.
-// ajaxResponse — тело успешного ответа /api/duplicates; ajaxShouldFail → ветка .fail().
+// ajaxResponse — тело успешного ответа по умолчанию; ajaxShouldFail → ветка .fail().
+// ajaxHandler(opts) — опц. роутер: { response?, fail? } по URL/методу (для нескольких эндпоинтов).
 let ajaxCalls = [];
 let ajaxResponse = { entity: { indexed: true }, count: 0, duplicates: [] };
 let ajaxShouldFail = false;
+let ajaxHandler = null;
 
 $.ajax = function (opts) {
   ajaxCalls.push(opts);
-  const failing = ajaxShouldFail;
-  const resp = ajaxResponse;
+  let failing = ajaxShouldFail;
+  let resp = ajaxResponse;
+  if (typeof ajaxHandler === 'function') {
+    const routed = ajaxHandler(opts) || {};
+    if (routed.fail !== undefined) failing = routed.fail;
+    if ('response' in routed) resp = routed.response;
+  }
   return {
     done(cb) {
       if (!failing) {
@@ -136,11 +143,13 @@ function resetEnv() {
   ajaxCalls = [];
   ajaxResponse = { entity: { indexed: true }, count: 0, duplicates: [] };
   ajaxShouldFail = false;
+  ajaxHandler = null;
   accountConstant = { id: 777 };
   modals.splice(0).forEach((modal) => modal.destroyed || modal.$body.remove());
   $('.dub-toast').remove();
+  $('.dub-settings').remove();
   $('#card-zone').remove();
-  $(document).off('.dub');
+  $(document).off('.dub').off('.dubset');
 }
 
 /* --------------------------------- проверки --------------------------------- */
@@ -411,25 +420,111 @@ section('Покрытие ключей локализации (ru/en)');
   });
 }
 
-/* 4. settings() рисует скелет секций */
-section('Скелет экрана настроек');
+/* 4. Экран настроек: загрузка с бэкенда, сохранение, CRUD правил */
+function settingsBody() {
+  return $('<div><input type="text" name="backend_url" value="x"><input type="text" name="security_key" value="k"></div>')
+    .appendTo(document.body);
+}
+
+section('Экран настроек: загрузка настроек и правил');
 {
   resetEnv();
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') {
+      return { response: { entities: { contact: true, company: false, lead: true }, prevent_create: false } };
+    }
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') {
+      return { response: [{ id: '7', entity_type: 'contact', name: 'По телефону', fields: [{ key_type: 'phone' }], operator: 'AND', enabled: true }] };
+    }
+    return {};
+  };
   const widget = makeWidget('settings');
-  const $modalBody = $('<div><input type="text" name="backend_url" value=""><input type="text" name="security_key" value=""></div>')
-    .appendTo(document.body);
+  const $modalBody = settingsBody();
   const result = widget.callbacks.settings($modalBody);
   assert(result === true, 'settings() вернул true');
-  assert($modalBody.find('.dub-settings').length === 1, 'скелет настроек добавлен');
-  assert($modalBody.find('.dub-settings__section').length === 5, 'пять секций (сущности/правила/нормализация/права/запрет)');
-  const titles = $modalBody.find('.dub-settings__section-title').map(function () {
-    return $(this).text();
-  }).get().join('|');
-  ['entities', 'rules', 'normalization', 'permissions', 'prevent'].forEach((k) => {
-    assert(titles.indexOf(ruLang.settings[k]) !== -1, 'секция «' + ruLang.settings[k] + '» присутствует');
-  });
-  assert($modalBody.find('.dub-settings__section').first().find('input[type="checkbox"]').length === 3,
-    'в секции «Сущности» три чекбокса (контакты/компании/сделки)');
+  assert($modalBody.find('.dub-settings').length === 1, 'панель настроек добавлена');
+  assert(ajaxCalls.some((c) => /\/api\/settings/.test(c.url) && c.method === 'GET'), 'запрошены настройки');
+  assert(ajaxCalls.some((c) => /\/api\/rules/.test(c.url) && c.method === 'GET'), 'запрошены правила');
+  assert($modalBody.find('.dub-ent[data-ent="contact"]').prop('checked') === true, 'contact включён');
+  assert($modalBody.find('.dub-ent[data-ent="company"]').prop('checked') === false,
+    'company выключен (из загруженных настроек)');
+  assert($modalBody.find('.dub-rule').length === 1, 'загруженное правило в списке');
+  assert($modalBody.find('.dub-rule__name').text() === 'По телефону', 'имя правила отрисовано');
+  $modalBody.remove();
+}
+
+section('Экран настроек: сохранение (PUT /api/settings)');
+{
+  resetEnv();
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: { contact: true, company: true, lead: true }, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $modalBody = settingsBody();
+  widget.callbacks.settings($modalBody);
+  $modalBody.find('.dub-ent[data-ent="lead"]').prop('checked', false);
+  $modalBody.find('.dub-prevent').prop('checked', true);
+  $modalBody.find('.dub-settings__save').trigger('click');
+  const put = ajaxCalls.find((c) => c.method === 'PUT' && /\/api\/settings/.test(c.url));
+  assert(!!put, 'выполнен PUT /api/settings');
+  const body = JSON.parse((put && put.data) || '{}');
+  assert(body.entities.lead === false && body.prevent_create === true, 'тело отражает изменения формы');
+  assert(/account_id=777/.test((put && put.url) || ''), 'account_id в query');
+  assert(put.headers && put.headers['X-Security-Key'] === 'k', 'передан X-Security-Key');
+  assert($modalBody.find('.dub-settings__status').text() !== '', 'показан статус сохранения');
+  $modalBody.remove();
+}
+
+section('Экран настроек: добавление и удаление правила');
+{
+  resetEnv();
+  let nextId = 50;
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'POST') {
+      const b = JSON.parse(opts.data || '{}');
+      return { response: { id: String(nextId++), entity_type: b.entity_type, name: b.name, fields: b.fields, operator: b.operator, enabled: true } };
+    }
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $modalBody = settingsBody();
+  widget.callbacks.settings($modalBody);
+  assert($modalBody.find('.dub-rules__empty').length === 1, 'изначально правил нет');
+
+  $modalBody.find('.dub-rule__newname').val('Email-правило');
+  $modalBody.find('.dub-rule__newentity').val('company');
+  $modalBody.find('.dub-rule__newop').val('OR');
+  $modalBody.find('.dub-rule__newkey[value="email"]').prop('checked', true);
+  $modalBody.find('.dub-rule__add').trigger('click');
+
+  const post = ajaxCalls.find((c) => c.method === 'POST' && /\/api\/rules/.test(c.url));
+  assert(!!post, 'выполнен POST /api/rules');
+  const body = JSON.parse((post && post.data) || '{}');
+  assert(body.name === 'Email-правило' && body.entity_type === 'company' && body.operator === 'OR',
+    'тело нового правила');
+  assert(body.fields.length === 1 && body.fields[0].key_type === 'email', 'выбрано поле email');
+  assert($modalBody.find('.dub-rule').length === 1, 'правило добавлено в список');
+
+  $modalBody.find('.dub-rule__del').trigger('click');
+  assert(ajaxCalls.some((c) => c.method === 'DELETE' && /\/api\/rules\/50/.test(c.url)),
+    'выполнен DELETE /api/rules/:id');
+  assert($modalBody.find('.dub-rule').length === 0, 'строка правила удалена');
+  $modalBody.remove();
+}
+
+section('Экран настроек: бэкенд не настроен → подсказка');
+{
+  resetEnv();
+  const widget = makeWidget('settings', { settings: { backend_url: '', security_key: '' } });
+  const $modalBody = $('<div></div>').appendTo(document.body);
+  widget.callbacks.settings($modalBody);
+  assert(ajaxCalls.length === 0, 'без настройки бэкенда запросов нет');
+  assert($modalBody.find('.dub-settings__hint').text().indexOf(ruLang.settings.configure_first) !== -1,
+    'показана подсказка «настройте бэкенд»');
   $modalBody.remove();
 }
 

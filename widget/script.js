@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-06-16.2';
+    var WIDGET_BUILD = '2026-06-16.3';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -150,7 +150,21 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-settings__row{display:flex;align-items:center;gap:8px;font-size:13px;color:#313942;margin-bottom:6px}',
         '.dub-settings__row:last-child{margin-bottom:0}',
         '.dub-settings__placeholder{font-size:12px;color:#92989b;font-style:italic}',
-        '.dub-settings__badge{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:10px;background:#eef1f4;color:#92989b;font-size:11px;font-style:normal;vertical-align:middle}'
+        '.dub-settings__badge{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:10px;background:#eef1f4;color:#92989b;font-size:11px;font-style:normal;vertical-align:middle}',
+        /* правила в настройках */
+        '.dub-rule{display:flex;align-items:center;gap:8px;font-size:13px;color:#313942;padding:6px 0;border-bottom:1px solid #eef1f4}',
+        '.dub-rule__toggle{flex:0 0 auto;margin:0}',
+        '.dub-rule__name{font-weight:bold}',
+        '.dub-rule__meta{color:#92989b;font-size:12px}',
+        '.dub-rule__del{margin-left:auto;flex:0 0 auto;padding:2px 9px;line-height:1.2;color:#e05c5c}',
+        '.dub-rules__empty{padding:6px 0}',
+        '.dub-rules__add{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}',
+        '.dub-rules__add input[type="text"],.dub-rules__add select{padding:5px 8px;border:1px solid #d4d7da;border-radius:3px;font-size:13px}',
+        '.dub-rule__keys{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:#313942}',
+        '.dub-rule__keyopt{display:flex;align-items:center;gap:4px}',
+        '.dub-settings__foot{display:flex;align-items:center;gap:12px}',
+        '.dub-settings__status{font-size:13px;color:#1f9d57}',
+        '.dub-settings__status_error{color:#e05c5c}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -483,57 +497,225 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       });
     }
 
-    /* ------------------------- скелет экрана настроек ------------------------- */
+    /* ------------------------------ экран настроек ------------------------------ */
 
-    // Статическая разметка настроек (без логики). Секции из ТЗ §5.4.
-    function settingsSkeletonHtml() {
-      function section(titleKey, titleFallback, rowsHtml) {
-        return '<div class="dub-settings__section">' +
-          '<div class="dub-settings__section-title">' + escapeHtml(t(titleKey, titleFallback)) +
-            '<span class="dub-settings__badge">' + escapeHtml(t('common.soon', 'Скоро')) + '</span></div>' +
-          rowsHtml +
-          '</div>';
-      }
+    // Типы ключей для конструктора правил.
+    var KEY_LABELS = [
+      { key: 'phone', i18n: 'settings.key_phone', fb: 'Телефон' },
+      { key: 'email', i18n: 'settings.key_email', fb: 'Email' },
+      { key: 'inn', i18n: 'settings.key_inn', fb: 'ИНН' },
+      { key: 'name', i18n: 'settings.key_name', fb: 'Имя' }
+    ];
 
-      function checkboxRow(labelKey, labelFallback) {
-        return '<label class="dub-settings__row">' +
-          '<input type="checkbox" disabled> ' + escapeHtml(t(labelKey, labelFallback)) +
-          '</label>';
-      }
+    // Запрос к API бэкенда: account_id в query, ключ в заголовке.
+    function apiCall(method, path, body, onDone, onFail) {
+      var sep = path.indexOf('?') >= 0 ? '&' : '?';
+      $.ajax({
+        url: backendBase() + path + sep + 'account_id=' + encodeURIComponent(accountId()),
+        method: method,
+        contentType: 'application/json',
+        dataType: 'json',
+        data: body != null ? JSON.stringify(body) : undefined,
+        headers: { 'X-Security-Key': getSettings().security_key }
+      }).done(onDone || function () {}).fail(onFail || function () {});
+    }
 
-      function placeholderRow() {
-        return '<div class="dub-settings__row dub-settings__placeholder">' +
-          escapeHtml(t('common.soon', 'Скоро')) + '</div>';
-      }
+    function settingsStatus(text, isError) {
+      $('.dub-settings__status').text(text).toggleClass('dub-settings__status_error', !!isError);
+    }
 
-      var entities = checkboxRow('settings.contacts', 'Контакты') +
-        checkboxRow('settings.companies', 'Компании') +
-        checkboxRow('settings.leads', 'Сделки');
+    function section(titleKey, titleFallback, inner) {
+      return '<div class="dub-settings__section">' +
+        '<div class="dub-settings__section-title">' + escapeHtml(t(titleKey, titleFallback)) + '</div>' +
+        inner + '</div>';
+    }
 
-      return '<div class="dub-settings">' +
-        '<div class="dub-settings__hint">' +
-          escapeHtml(t('widget.short_description', 'Поиск и объединение дублей')) +
-        '</div>' +
-        section('settings.entities', 'Сущности', entities) +
-        section('settings.rules', 'Правила поиска', placeholderRow()) +
-        section('settings.normalization', 'Нормализация', placeholderRow()) +
-        section('settings.permissions', 'Права на объединение', placeholderRow()) +
-        section('settings.prevent', 'Запрет создания дублей', placeholderRow()) +
+    function entityCheckbox(ent, labelKey, labelFallback, checked) {
+      return '<label class="dub-settings__row">' +
+        '<input type="checkbox" class="dub-ent" data-ent="' + ent + '"' + (checked ? ' checked' : '') + '> ' +
+        escapeHtml(t(labelKey, labelFallback)) + '</label>';
+    }
+
+    function ruleRowHtml(rule) {
+      var fields = (rule.fields || []).map(function (f) { return f.key_type; }).join(', ');
+      var meta = escapeHtml(rule.entity_type + ' · ' + (fields || '—') + ' · ' + rule.operator);
+      return '<div class="dub-rule" data-id="' + escapeHtml(rule.id) + '">' +
+        '<label class="dub-rule__toggle"><input type="checkbox" class="dub-rule__enabled"' +
+          (rule.enabled ? ' checked' : '') + '></label>' +
+        '<span class="dub-rule__name">' + escapeHtml(rule.name) + '</span>' +
+        '<span class="dub-rule__meta">' + meta + '</span>' +
+        '<button type="button" class="dub__btn dub-rule__del" title="' +
+          escapeHtml(t('settings.delete', 'Удалить')) + '">×</button>' +
         '</div>';
     }
 
-    function renderSettingsSkeleton($modal_body) {
+    function rulesSectionHtml(rules) {
+      var list = rules.length
+        ? rules.map(ruleRowHtml).join('')
+        : '<div class="dub-rules__empty dub-settings__placeholder">' +
+            escapeHtml(t('settings.no_rules', 'Правил пока нет')) + '</div>';
+
+      var entityOptions = [
+        ['contact', t('settings.contacts', 'Контакты')],
+        ['company', t('settings.companies', 'Компании')],
+        ['lead', t('settings.leads', 'Сделки')]
+      ].map(function (o) {
+        return '<option value="' + o[0] + '">' + escapeHtml(o[1]) + '</option>';
+      }).join('');
+
+      var opOptions =
+        '<option value="AND">' + escapeHtml(t('settings.match_all', 'Все условия (AND)')) + '</option>' +
+        '<option value="OR">' + escapeHtml(t('settings.match_any', 'Любое условие (OR)')) + '</option>';
+
+      var keyChecks = KEY_LABELS.map(function (k) {
+        return '<label class="dub-rule__keyopt"><input type="checkbox" class="dub-rule__newkey" value="' +
+          k.key + '"> ' + escapeHtml(t(k.i18n, k.fb)) + '</label>';
+      }).join('');
+
+      var add = '<div class="dub-rules__add">' +
+        '<input type="text" class="dub-rule__newname" placeholder="' +
+          escapeHtml(t('settings.rule_name_ph', 'Название правила')) + '">' +
+        '<select class="dub-rule__newentity">' + entityOptions + '</select>' +
+        '<select class="dub-rule__newop">' + opOptions + '</select>' +
+        '<div class="dub-rule__keys">' + keyChecks + '</div>' +
+        '<button type="button" class="dub__btn dub__btn_primary dub-rule__add">' +
+          escapeHtml(t('settings.add', 'Добавить правило')) + '</button>' +
+        '</div>';
+
+      return section('settings.rules', 'Правила поиска',
+        '<div class="dub-rules__list">' + list + '</div>' + add);
+    }
+
+    // Разметка панели настроек по загруженным данным (настройки + правила).
+    function settingsHtml(dedup, rules) {
+      var ent = dedup.entities || {};
+      var entities = entityCheckbox('contact', 'settings.contacts', 'Контакты', ent.contact !== false) +
+        entityCheckbox('company', 'settings.companies', 'Компании', ent.company !== false) +
+        entityCheckbox('lead', 'settings.leads', 'Сделки', ent.lead !== false);
+
+      var prevent = '<label class="dub-settings__row">' +
+        '<input type="checkbox" class="dub-prevent"' + (dedup.prevent_create ? ' checked' : '') + '> ' +
+        escapeHtml(t('settings.prevent_label', 'Предупреждать о дублях при сохранении')) + '</label>';
+
+      return '<div class="dub-settings__hint">' +
+          escapeHtml(t('widget.short_description', 'Поиск и объединение дублей')) + '</div>' +
+        section('settings.entities', 'Сущности', entities) +
+        rulesSectionHtml(rules) +
+        section('settings.prevent', 'Запрет создания дублей', prevent) +
+        '<div class="dub-settings__foot">' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-settings__save">' +
+            escapeHtml(t('common.save', 'Сохранить')) + '</button>' +
+          '<span class="dub-settings__status"></span>' +
+        '</div>';
+    }
+
+    function loadErrorHtml() {
+      return '<div class="dub-settings__hint dub-settings__status_error">' +
+        escapeHtml(t('settings.load_failed', 'Не удалось загрузить настройки')) + '</div>';
+    }
+
+    // Рендерит панель настроек: грузит настройки и правила с бэкенда и строит форму.
+    function renderSettings($container) {
       injectStyles();
-      var $skeleton = $(settingsSkeletonHtml());
-      // Не трогаем служебные поля настроек (backend_url / security_key) —
-      // их рисует амо. Скелет добавляем перед ними как превью будущих секций.
-      var $firstField = $modal_body.find('input[name="backend_url"], input[name="security_key"]').first();
+      $container.find('.dub-settings').remove(); // идемпотентно при повторном открытии
+      var $panel = $('<div class="dub-settings"></div>');
+      // Не трогаем служебные поля (backend_url / security_key) — их рисует амо.
+      var $firstField = $container.find('input[name="backend_url"], input[name="security_key"]').first();
       if ($firstField.length) {
         var $wrap = $firstField.closest('.widget_settings_block__item_field');
-        ($wrap.length ? $wrap : $firstField).before($skeleton);
+        ($wrap.length ? $wrap : $firstField).before($panel);
       } else {
-        $modal_body.prepend($skeleton);
+        $container.prepend($panel);
       }
+
+      if (!isConfigured()) {
+        $panel.html('<div class="dub-settings__hint">' +
+          escapeHtml(t('settings.configure_first',
+            'Заполните URL бэкенда и ключ безопасности, сохраните и откройте настройки снова.')) +
+          '</div>');
+        return;
+      }
+
+      $panel.html('<div class="dub-settings__hint">' + escapeHtml(t('common.loading', 'Загрузка…')) + '</div>');
+      apiCall('GET', '/api/settings', null, function (dedup) {
+        apiCall('GET', '/api/rules', null, function (rules) {
+          $panel.html(settingsHtml(dedup || {}, rules || []));
+        }, function () { $panel.html(loadErrorHtml()); });
+      }, function () { $panel.html(loadErrorHtml()); });
+
+      bindSettingsActions();
+    }
+
+    /* ----------------------- обработчики экрана настроек ----------------------- */
+
+    function bindSettingsActions() {
+      $(document)
+        .off('click.dubset change.dubset')
+        .on('click.dubset', '.dub-settings__save', saveSettings)
+        .on('click.dubset', '.dub-rule__add', addRule)
+        .on('click.dubset', '.dub-rule__del', deleteRule)
+        .on('change.dubset', '.dub-rule__enabled', toggleRule);
+    }
+
+    function saveSettings() {
+      var $p = $('.dub-settings');
+      var dedup = {
+        entities: {
+          contact: $p.find('.dub-ent[data-ent="contact"]').prop('checked'),
+          company: $p.find('.dub-ent[data-ent="company"]').prop('checked'),
+          lead: $p.find('.dub-ent[data-ent="lead"]').prop('checked')
+        },
+        prevent_create: $p.find('.dub-prevent').prop('checked')
+      };
+      apiCall('PUT', '/api/settings', dedup, function () {
+        settingsStatus(t('settings.saved', 'Настройки сохранены'), false);
+      }, function () {
+        settingsStatus(t('settings.save_failed', 'Не удалось сохранить'), true);
+      });
+    }
+
+    function addRule() {
+      var $p = $('.dub-settings');
+      var name = String($p.find('.dub-rule__newname').val() || '').trim();
+      var fields = $p.find('.dub-rule__newkey:checked').map(function () {
+        return { key_type: $(this).val() };
+      }).get();
+      if (!name || !fields.length) {
+        settingsStatus(t('settings.rule_incomplete', 'Укажите название и хотя бы одно поле'), true);
+        return;
+      }
+      var rule = {
+        entity_type: $p.find('.dub-rule__newentity').val(),
+        name: name,
+        operator: $p.find('.dub-rule__newop').val(),
+        fields: fields
+      };
+      apiCall('POST', '/api/rules', rule, function (created) {
+        $p.find('.dub-rules__empty').remove();
+        $p.find('.dub-rules__list').append(ruleRowHtml(created));
+        $p.find('.dub-rule__newname').val('');
+        $p.find('.dub-rule__newkey').prop('checked', false);
+        settingsStatus(t('settings.saved', 'Настройки сохранены'), false);
+      }, function () {
+        settingsStatus(t('settings.save_failed', 'Не удалось сохранить'), true);
+      });
+    }
+
+    function deleteRule() {
+      var $row = $(this).closest('.dub-rule');
+      apiCall('DELETE', '/api/rules/' + encodeURIComponent($row.attr('data-id')), null, function () {
+        $row.remove();
+      }, function () {
+        settingsStatus(t('settings.save_failed', 'Не удалось сохранить'), true);
+      });
+    }
+
+    function toggleRule() {
+      var $row = $(this).closest('.dub-rule');
+      apiCall('PATCH', '/api/rules/' + encodeURIComponent($row.attr('data-id')),
+        { enabled: $(this).prop('checked') }, null, function () {
+          settingsStatus(t('settings.save_failed', 'Не удалось сохранить'), true);
+        });
     }
 
     /* --------------------------------- callbacks --------------------------------- */
@@ -583,7 +765,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       settings: function ($modal_body) {
-        renderSettingsSkeleton($modal_body);
+        renderSettings($modal_body);
         return true;
       },
 
@@ -592,14 +774,14 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       destroy: function () {
-        // Очистка слушателей / DOM / модалок в неймспейсе .dub
-        $(document).off('click.dub');
+        // Очистка слушателей / DOM / модалок в неймспейсах .dub и .dubset
+        $(document).off('click.dub').off('click.dubset change.dubset');
         closeMergeModals();
         $('.dub-toast').remove();
       },
 
       advancedSettings: function () {
-        renderSettingsSkeleton($('.dub-advanced-settings-anchor').length
+        renderSettings($('.dub-advanced-settings-anchor').length
           ? $('.dub-advanced-settings-anchor')
           : $(document.body));
         return true;
