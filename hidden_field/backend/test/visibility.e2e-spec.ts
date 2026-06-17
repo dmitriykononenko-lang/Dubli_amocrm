@@ -21,7 +21,7 @@ const USER = '500';
 // amoCRM замокан: meta берёт поля/пользователей/воронки отсюда (без реальной сети).
 const amocrmStub: Partial<AmocrmService> = {
   getCustomFields: async (_accountId, entity) =>
-    entity === 'lead' ? [{ id: 111, name: 'Бюджет' }] : [],
+    entity === 'lead' ? [{ id: 111, name: 'Источник' }] : [],
   getUsers: async () => [{ id: 500, name: 'Менеджер' }],
   getPipelines: async () => [{ id: 1, name: 'Продажи' }],
 };
@@ -90,7 +90,13 @@ describeDb('Hidden Field e2e (matrix/config/meta)', () => {
 
     expect(res.body.users).toEqual([{ id: '500', name: 'Менеджер' }]);
     expect(res.body.pipelines).toEqual([{ id: '1', name: 'Продажи' }]);
-    expect(res.body.fields).toContainEqual({ id: '111', name: 'Бюджет', entity: 'lead' });
+    expect(res.body.fields).toContainEqual({ id: '111', name: 'Источник', entity: 'lead' });
+    expect(res.body.fields).toContainEqual({
+      id: 'sys_lead_price',
+      name: 'Бюджет',
+      entity: 'lead',
+      system: true,
+    });
     expect(res.body.matrix['111:500']).toBe('S');
   });
 

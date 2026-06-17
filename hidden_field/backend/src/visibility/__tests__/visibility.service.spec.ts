@@ -5,7 +5,7 @@ import type { AuditService } from '../../common/audit/audit.service';
 
 // Юнит-тест чистой логики сервиса: трансформация матрицы в конфиг и парсинг сохранения.
 // Репозиторий/amocrm/audit — лёгкие моки, БД не нужна.
-function makeService(rows: MatrixRow[] = []) {
+function makeService(rows: MatrixRow[] = [], amocrm: Partial<AmocrmService> = {}) {
   let saved: MatrixRow[] | null = null;
   const repo = {
     findAll: async () => rows,
@@ -15,9 +15,8 @@ function makeService(rows: MatrixRow[] = []) {
       saved = r;
     },
   } as unknown as VisibilityRepository;
-  const amocrm = {} as AmocrmService;
   const audit = { log: async () => undefined } as unknown as AuditService;
-  const service = new VisibilityService(repo, amocrm, audit);
+  const service = new VisibilityService(repo, amocrm as AmocrmService, audit);
   return { service, getSaved: () => saved };
 }
 
@@ -60,5 +59,29 @@ describe('VisibilityService', () => {
   it('saveMatrix требует объект', async () => {
     const { service } = makeService();
     await expect(service.saveMatrix('1', null)).rejects.toThrow();
+  });
+
+  it('getMeta добавляет системные поля и сливает их с кастомными', async () => {
+    const amocrm: Partial<AmocrmService> = {
+      getCustomFields: async (_a, entity) =>
+        entity === 'lead' ? [{ id: 111, name: 'Источник' }] : [],
+      getUsers: async () => [{ id: 500, name: 'Менеджер' }],
+      getPipelines: async () => [{ id: 1, name: 'Продажи' }],
+    };
+    const { service } = makeService(
+      [{ user_id: '500', field_id: 'sys_lead_price', mode: 'B' }],
+      amocrm,
+    );
+    const meta = await service.getMeta('1');
+
+    expect(meta.fields).toContainEqual({
+      id: 'sys_lead_price',
+      name: 'Бюджет',
+      entity: 'lead',
+      system: true,
+    });
+    expect(meta.fields).toContainEqual({ id: '111', name: 'Источник', entity: 'lead' });
+    expect(meta.users).toEqual([{ id: '500', name: 'Менеджер' }]);
+    expect(meta.matrix['sys_lead_price:500']).toBe('B');
   });
 });

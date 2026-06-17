@@ -8,10 +8,37 @@ import { VisibilityRepository, type MatrixRow } from './visibility.repository';
 const MODES: FieldMode[] = ['O', 'S', '*', 'B', 'V'];
 const ENTITIES: EntityType[] = ['lead', 'contact', 'company'];
 
+// Системные поля amoCRM (нет в custom_fields API) — добавляем в матрицу вручную.
+// Синтетический id «sys_<entity>_<code>» уникален по сущности и не содержит ':'
+// (безопасно для ключа матрицы "field:user").
+const SYSTEM_FIELDS: Record<EntityType, Array<{ code: string; name: string }>> = {
+  lead: [
+    { code: 'name', name: 'Название сделки' },
+    { code: 'price', name: 'Бюджет' },
+    { code: 'responsible', name: 'Ответственный' },
+    { code: 'tags', name: 'Теги' },
+  ],
+  contact: [
+    { code: 'name', name: 'Имя' },
+    { code: 'responsible', name: 'Ответственный' },
+    { code: 'tags', name: 'Теги' },
+  ],
+  company: [
+    { code: 'name', name: 'Название компании' },
+    { code: 'responsible', name: 'Ответственный' },
+    { code: 'tags', name: 'Теги' },
+  ],
+};
+
+function systemFieldId(entity: EntityType, code: string): string {
+  return `sys_${entity}_${code}`;
+}
+
 export interface MetaField {
   id: string;
   name: string;
   entity: EntityType;
+  system?: boolean; // системное поле amoCRM (не из custom_fields)
 }
 export interface MetaUser {
   id: string;
@@ -57,6 +84,10 @@ export class VisibilityService {
 
     const fields: MetaField[] = [];
     ENTITIES.forEach((entity, i) => {
+      // системные поля идут первыми, затем кастомные поля сущности
+      for (const sf of SYSTEM_FIELDS[entity]) {
+        fields.push({ id: systemFieldId(entity, sf.code), name: sf.name, entity, system: true });
+      }
       for (const f of fieldsByEntity[i]) {
         fields.push({ id: String(f.id), name: f.name, entity });
       }
