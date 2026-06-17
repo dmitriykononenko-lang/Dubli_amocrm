@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-06-16.3';
+    var WIDGET_BUILD = '2026-06-16.4';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -164,7 +164,19 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-rule__keyopt{display:flex;align-items:center;gap:4px}',
         '.dub-settings__foot{display:flex;align-items:center;gap:12px}',
         '.dub-settings__status{font-size:13px;color:#1f9d57}',
-        '.dub-settings__status_error{color:#e05c5c}'
+        '.dub-settings__status_error{color:#e05c5c}',
+        /* массовая чистка */
+        '.dub-scan__controls{display:flex;align-items:center;gap:8px;margin-bottom:10px}',
+        '.dub-scan__controls select{padding:5px 8px;border:1px solid #d4d7da;border-radius:3px;font-size:13px}',
+        '.dub-scan__job{display:flex;align-items:center;gap:10px;font-size:13px;color:#313942;padding:6px 0;border-bottom:1px solid #eef1f4}',
+        '.dub-scan__job:last-child{border-bottom:none}',
+        '.dub-scan__entity-name{font-weight:bold;min-width:80px}',
+        '.dub-scan__status{padding:1px 8px;border-radius:10px;background:#eef1f4;font-size:12px}',
+        '.dub-scan__status_running{background:#e3f0ff;color:#2b7de9}',
+        '.dub-scan__status_done{background:#e6f6ec;color:#1f9d57}',
+        '.dub-scan__status_error{background:#fdecec;color:#e05c5c}',
+        '.dub-scan__progress{color:#92989b;font-size:12px}',
+        '.dub-scan__pause,.dub-scan__resume{margin-left:auto;flex:0 0 auto;padding:4px 10px;font-size:12px}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -549,19 +561,24 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '</div>';
     }
 
-    function rulesSectionHtml(rules) {
-      var list = rules.length
-        ? rules.map(ruleRowHtml).join('')
-        : '<div class="dub-rules__empty dub-settings__placeholder">' +
-            escapeHtml(t('settings.no_rules', 'Правил пока нет')) + '</div>';
-
-      var entityOptions = [
+    // <option> сущностей для select'ов (правила, скан).
+    function entityOptionsHtml() {
+      return [
         ['contact', t('settings.contacts', 'Контакты')],
         ['company', t('settings.companies', 'Компании')],
         ['lead', t('settings.leads', 'Сделки')]
       ].map(function (o) {
         return '<option value="' + o[0] + '">' + escapeHtml(o[1]) + '</option>';
       }).join('');
+    }
+
+    function rulesSectionHtml(rules) {
+      var list = rules.length
+        ? rules.map(ruleRowHtml).join('')
+        : '<div class="dub-rules__empty dub-settings__placeholder">' +
+            escapeHtml(t('settings.no_rules', 'Правил пока нет')) + '</div>';
+
+      var entityOptions = entityOptionsHtml();
 
       var opOptions =
         '<option value="AND">' + escapeHtml(t('settings.match_all', 'Все условия (AND)')) + '</option>' +
@@ -601,6 +618,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           escapeHtml(t('widget.short_description', 'Поиск и объединение дублей')) + '</div>' +
         section('settings.entities', 'Сущности', entities) +
         rulesSectionHtml(rules) +
+        scanSectionHtml() +
         section('settings.prevent', 'Запрет создания дублей', prevent) +
         '<div class="dub-settings__foot">' +
           '<button type="button" class="dub__btn dub__btn_primary dub-settings__save">' +
@@ -612,6 +630,116 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     function loadErrorHtml() {
       return '<div class="dub-settings__hint dub-settings__status_error">' +
         escapeHtml(t('settings.load_failed', 'Не удалось загрузить настройки')) + '</div>';
+    }
+
+    /* ----------------------------- массовая чистка ----------------------------- */
+
+    var SCAN_POLL_MS = 3000;
+
+    function isActiveScan(j) {
+      return j.status === 'queued' || j.status === 'running';
+    }
+
+    function scanStatusLabel(status) {
+      switch (status) {
+        case 'queued': return t('settings.scan_status_queued', 'В очереди');
+        case 'running': return t('settings.scan_status_running', 'Идёт');
+        case 'paused': return t('settings.scan_status_paused', 'Пауза');
+        case 'done': return t('settings.scan_status_done', 'Готово');
+        case 'error': return t('settings.scan_status_error', 'Ошибка');
+        default: return status;
+      }
+    }
+
+    function scanRowHtml(j) {
+      var ctrl = '';
+      if (isActiveScan(j)) {
+        ctrl = '<button type="button" class="dub__btn dub-scan__pause" data-id="' +
+          escapeHtml(j.id) + '">' + escapeHtml(t('settings.scan_pause', 'Пауза')) + '</button>';
+      } else if (j.status === 'paused') {
+        ctrl = '<button type="button" class="dub__btn dub-scan__resume" data-id="' +
+          escapeHtml(j.id) + '">' + escapeHtml(t('settings.scan_resume', 'Продолжить')) + '</button>';
+      }
+      return '<div class="dub-scan__job" data-id="' + escapeHtml(j.id) + '">' +
+        '<span class="dub-scan__entity-name">' + escapeHtml(j.entity_type) + '</span>' +
+        '<span class="dub-scan__status dub-scan__status_' + escapeHtml(j.status) + '">' +
+          escapeHtml(scanStatusLabel(j.status)) + '</span>' +
+        '<span class="dub-scan__progress">' +
+          escapeHtml(t('settings.scan_progress', 'обработано')) + ': ' +
+          escapeHtml(String(j.progress || 0)) + '</span>' +
+        ctrl +
+        '</div>';
+    }
+
+    function scanJobsHtml(jobs) {
+      if (!jobs.length) {
+        return '<div class="dub-scan__empty dub-settings__placeholder">' +
+          escapeHtml(t('settings.scan_empty', 'Сканирований пока не было')) + '</div>';
+      }
+      return jobs.map(scanRowHtml).join('');
+    }
+
+    function scanSectionHtml() {
+      var controls = '<div class="dub-scan__controls">' +
+        '<select class="dub-scan__entity">' + entityOptionsHtml() + '</select>' +
+        '<button type="button" class="dub__btn dub__btn_primary dub-scan__start">' +
+          escapeHtml(t('settings.scan_start', 'Сканировать')) + '</button>' +
+        '</div>';
+      return section('settings.scan_title', 'Массовая чистка',
+        '<div class="dub-settings__hint">' +
+          escapeHtml(t('settings.scan_hint', 'Просканировать всю базу и проиндексировать для поиска дублей.')) +
+        '</div>' + controls + '<div class="dub-scan__list"></div>');
+    }
+
+    // Подгружает список задач сканирования и (пере)запускает опрос, пока есть активные.
+    function refreshScans() {
+      apiCall('GET', '/api/scan', null, function (jobs) {
+        var arr = Array.isArray(jobs) ? jobs : [];
+        var $list = $('.dub-scan__list');
+        if (!$list.length) {
+          stopScanPolling();
+          return;
+        }
+        $list.html(scanJobsHtml(arr));
+        if (arr.some(isActiveScan)) {
+          startScanPolling();
+        } else {
+          stopScanPolling();
+        }
+      });
+    }
+
+    function startScanPolling() {
+      if (self._scanTimer) return;
+      self._scanTimer = setInterval(refreshScans, SCAN_POLL_MS);
+      if (self._scanTimer && self._scanTimer.unref) self._scanTimer.unref();
+    }
+
+    function stopScanPolling() {
+      if (self._scanTimer) {
+        clearInterval(self._scanTimer);
+        self._scanTimer = null;
+      }
+    }
+
+    function startScan() {
+      var entityType = $('.dub-scan__entity').val();
+      apiCall('POST', '/api/scan', { entity_type: entityType }, function () {
+        settingsStatus(t('settings.scan_started', 'Сканирование запущено'), false);
+        refreshScans();
+      }, function () {
+        settingsStatus(t('settings.save_failed', 'Не удалось сохранить'), true);
+      });
+    }
+
+    function pauseScan() {
+      apiCall('POST', '/api/scan/' + encodeURIComponent($(this).attr('data-id')) + '/pause', null,
+        refreshScans, refreshScans);
+    }
+
+    function resumeScan() {
+      apiCall('POST', '/api/scan/' + encodeURIComponent($(this).attr('data-id')) + '/resume', null,
+        refreshScans, refreshScans);
     }
 
     // Рендерит панель настроек: грузит настройки и правила с бэкенда и строит форму.
@@ -640,6 +768,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       apiCall('GET', '/api/settings', null, function (dedup) {
         apiCall('GET', '/api/rules', null, function (rules) {
           $panel.html(settingsHtml(dedup || {}, rules || []));
+          refreshScans(); // подгрузить задачи сканирования в секцию «Массовая чистка»
         }, function () { $panel.html(loadErrorHtml()); });
       }, function () { $panel.html(loadErrorHtml()); });
 
@@ -654,7 +783,10 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         .on('click.dubset', '.dub-settings__save', saveSettings)
         .on('click.dubset', '.dub-rule__add', addRule)
         .on('click.dubset', '.dub-rule__del', deleteRule)
-        .on('change.dubset', '.dub-rule__enabled', toggleRule);
+        .on('change.dubset', '.dub-rule__enabled', toggleRule)
+        .on('click.dubset', '.dub-scan__start', startScan)
+        .on('click.dubset', '.dub-scan__pause', pauseScan)
+        .on('click.dubset', '.dub-scan__resume', resumeScan);
     }
 
     function saveSettings() {
@@ -774,8 +906,9 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       destroy: function () {
-        // Очистка слушателей / DOM / модалок в неймспейсах .dub и .dubset
+        // Очистка слушателей / DOM / модалок / таймеров в неймспейсах .dub и .dubset
         $(document).off('click.dub').off('click.dubset change.dubset');
+        stopScanPolling();
         closeMergeModals();
         $('.dub-toast').remove();
       },

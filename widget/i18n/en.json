@@ -48,7 +48,20 @@
     "saved": "Settings saved",
     "save_failed": "Couldn't save",
     "load_failed": "Couldn't load settings",
-    "configure_first": "Fill in the backend URL and security key, save, then reopen settings."
+    "configure_first": "Fill in the backend URL and security key, save, then reopen settings.",
+    "scan_title": "Mass cleanup",
+    "scan_hint": "Scan the whole base and index it for duplicate search.",
+    "scan_start": "Scan",
+    "scan_started": "Scan started",
+    "scan_empty": "No scans yet",
+    "scan_pause": "Pause",
+    "scan_resume": "Resume",
+    "scan_progress": "processed",
+    "scan_status_queued": "Queued",
+    "scan_status_running": "Running",
+    "scan_status_paused": "Paused",
+    "scan_status_done": "Done",
+    "scan_status_error": "Error"
   },
   "common": {
     "save": "Save",

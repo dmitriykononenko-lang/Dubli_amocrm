@@ -528,6 +528,51 @@ section('Экран настроек: бэкенд не настроен → п�
   $modalBody.remove();
 }
 
+section('Экран настроек: массовая чистка (запуск + статус + пауза)');
+{
+  resetEnv();
+  let started = false;
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/scan(\?|$)/.test(opts.url) && opts.method === 'GET') {
+      return { response: started ? [{ id: '5', entity_type: 'company', status: 'running', progress: 7 }] : [] };
+    }
+    if (/\/api\/scan(\?|$)/.test(opts.url) && opts.method === 'POST') {
+      started = true;
+      return { response: { id: '5', entity_type: 'company', status: 'queued', progress: 0 } };
+    }
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $modalBody = settingsBody();
+  widget.callbacks.settings($modalBody);
+
+  assert($modalBody.find('.dub-scan__start').length === 1, 'есть кнопка «Сканировать»');
+  assert($modalBody.find('.dub-scan__empty').length === 1, 'изначально сканирований нет');
+
+  $modalBody.find('.dub-scan__entity').val('company');
+  $modalBody.find('.dub-scan__start').trigger('click');
+  const post = ajaxCalls.find((c) => c.method === 'POST' && /\/api\/scan(\?|$)/.test(c.url));
+  assert(!!post, 'выполнен POST /api/scan');
+  const body = JSON.parse((post && post.data) || '{}');
+  assert(body.entity_type === 'company', 'передан entity_type');
+  assert(/account_id=777/.test((post && post.url) || ''), 'account_id в query');
+
+  // refreshScans после запуска показал активную задачу с прогрессом
+  assert($modalBody.find('.dub-scan__job').length === 1, 'задача появилась в списке');
+  assert($modalBody.find('.dub-scan__status_running').length === 1, 'статус «идёт»');
+  assert($modalBody.find('.dub-scan__progress').text().indexOf('7') !== -1, 'показан прогресс');
+
+  // пауза
+  $modalBody.find('.dub-scan__pause').trigger('click');
+  assert(ajaxCalls.some((c) => c.method === 'POST' && /\/api\/scan\/5\/pause/.test(c.url)),
+    'выполнен POST /api/scan/:id/pause');
+
+  widget.callbacks.destroy();
+  $modalBody.remove();
+}
+
 /* 5. destroy() очищает добавленный DOM и слушатели */
 section('destroy() очищает DOM и слушатели');
 {
