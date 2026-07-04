@@ -16,6 +16,8 @@
     "matched_by": "Matched by",
     "merge_into": "Merge into current",
     "merge_confirm": "Merge this record into the current card? The duplicate will be deleted (can be rolled back).",
+    "merge_pick_master": "Choose the record to keep — the other is merged into it and deleted (can be rolled back).",
+    "merge_current": "current card",
     "merge_done": "Duplicate merged",
     "merge_failed": "Merge failed",
     "open": "Open",

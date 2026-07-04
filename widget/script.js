@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-06-16.4';
+    var WIDGET_BUILD = '2026-06-16.5';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -140,7 +140,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-dups__merge{margin-left:auto;flex:0 0 auto;padding:5px 10px;font-size:12px}',
         /* подтверждение объединения */
         '.dub-confirm__text{font-size:13px;color:#313942;line-height:18px;margin-bottom:10px}',
-        '.dub-confirm__target{font-size:13px;color:#313942;font-weight:bold;margin-bottom:16px}',
+        '.dub-confirm__opts{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}',
+        '.dub-confirm__opt{display:flex;align-items:center;gap:8px;font-size:13px;color:#313942;padding:8px 10px;border:1px solid #e2e4e7;border-radius:4px;cursor:pointer}',
         '.dub-confirm__actions{margin-top:4px}',
         /* скелет настроек */
         '.dub-settings{margin:0 0 15px}',
@@ -459,31 +460,57 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       }
     }
 
-    // Подтверждение: дубль будет объединён в текущую карточку (главную) и удалён.
+    // Подтверждение слияния с выбором главной записи (её оставляем, вторую удаляем).
     function confirmMerge(duplicateAmoId, duplicateName) {
       var entity = self._entity;
       if (!entity) {
         return;
       }
-      var target = '#' + duplicateAmoId + (duplicateName ? ' — ' + duplicateName : '');
+      // Кандидаты: текущая карточка (a) и выбранный дубль (b).
+      self._mergePair = {
+        a: String(entity.id),
+        aLabel: t('card.merge_current', 'текущая карточка'),
+        b: String(duplicateAmoId),
+        bLabel: duplicateName || ''
+      };
+
+      function option(id, label, checked) {
+        return '<label class="dub-confirm__opt">' +
+          '<input type="radio" name="dub-master" class="dub-confirm__master" value="' +
+            escapeHtml(id) + '"' + (checked ? ' checked' : '') + '> ' +
+          '#' + escapeHtml(id) + (label ? ' — ' + escapeHtml(label) : '') + '</label>';
+      }
+
       var html = '<div class="dub-modal__title">' + escapeHtml(t('card.merge', 'Объединить')) + '</div>' +
         '<div class="dub-confirm__text">' +
-          escapeHtml(t('card.merge_confirm',
-            'Объединить запись в текущую карточку? Дубль будет удалён (можно откатить).')) +
+          escapeHtml(t('card.merge_pick_master',
+            'Выберите главную запись — её оставим, вторую объединим в неё и удалим (можно откатить).')) +
         '</div>' +
-        '<div class="dub-confirm__target">' + escapeHtml(target) +
-          ' → #' + escapeHtml(String(entity.id)) + '</div>' +
+        '<div class="dub-confirm__opts">' +
+          option(self._mergePair.a, self._mergePair.aLabel, true) +
+          option(self._mergePair.b, self._mergePair.bLabel, false) +
+        '</div>' +
         '<div class="dub__actions dub-confirm__actions">' +
           '<button type="button" class="dub__btn dub-confirm__cancel">' +
             escapeHtml(t('common.cancel', 'Отмена')) + '</button>' +
-          '<button type="button" class="dub__btn dub__btn_primary dub-confirm__ok" data-amo-id="' +
-            escapeHtml(duplicateAmoId) + '">' + escapeHtml(t('card.merge', 'Объединить')) + '</button>' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-confirm__ok">' +
+            escapeHtml(t('card.merge', 'Объединить')) + '</button>' +
         '</div>';
       self._confirmModal = openYpModal('dub-confirm-modal', html);
     }
 
-    // POST {backend_url}/api/merge: текущая карточка — главная, выбранная запись — дубль.
-    function performMerge(duplicateAmoId) {
+    // Запуск слияния по выбранной в модалке главной записи.
+    function submitMerge() {
+      var pair = self._mergePair || {};
+      var master = $('.dub-confirm__master:checked').val() || pair.a;
+      var duplicate = String(master) === String(pair.a) ? pair.b : pair.a;
+      if (master && duplicate) {
+        performMerge(master, duplicate);
+      }
+    }
+
+    // POST {backend_url}/api/merge: master остаётся, duplicate объединяется в него и удаляется.
+    function performMerge(masterAmoId, duplicateAmoId) {
       var entity = self._entity;
       if (!entity || !isConfigured()) {
         return;
@@ -495,7 +522,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         dataType: 'json',
         data: JSON.stringify({
           entity_type: entity.type,
-          master_amo_id: entity.id,
+          master_amo_id: masterAmoId,
           duplicate_amo_id: duplicateAmoId,
           author_user_id: currentUserId()
         }),
@@ -885,7 +912,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           })
           // подтверждение объединения
           .on('click.dub', '.dub-confirm__ok', function () {
-            performMerge($(this).attr('data-amo-id'));
+            submitMerge();
           })
           .on('click.dub', '.dub-confirm__cancel', function () {
             if (self._confirmModal) {

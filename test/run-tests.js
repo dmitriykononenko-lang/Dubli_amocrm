@@ -275,9 +275,12 @@ section('Объединить: список → подтверждение → P
   $('#card-zone .dub__merge').trigger('click');
   assert($('.dub-dups__merge').length === 1, 'в списке есть кнопка «Объединить в текущую»');
 
-  // строка → подтверждение
+  // строка → подтверждение с выбором главной записи (по умолчанию — текущая)
   $('.dub-dups__merge').first().trigger('click');
   assert($('.dub-confirm__ok').length === 1, 'показано подтверждение объединения');
+  assert($('.dub-confirm__master').length === 2, 'предложены обе записи для выбора главной');
+  assert(String($('.dub-confirm__master:checked').val()) === '123',
+    'по умолчанию главная — текущая карточка');
 
   // подтверждение → POST /api/merge
   $('.dub-confirm__ok').trigger('click');
@@ -285,7 +288,7 @@ section('Объединить: список → подтверждение → P
   assert(!!post, 'выполнен POST-запрос объединения');
   assert(/\/api\/merge\?account_id=777$/.test((post && post.url) || ''), 'URL /api/merge с account_id');
   const body = JSON.parse((post && post.data) || '{}');
-  assert(body.master_amo_id === 123 && String(body.duplicate_amo_id) === '201',
+  assert(String(body.master_amo_id) === '123' && String(body.duplicate_amo_id) === '201',
     'master = текущая карточка (123), duplicate = выбранная (201)');
   assert(body.entity_type === 'leads', 'передан entity_type');
   assert(body.author_user_id === 101, 'передан author_user_id текущего пользователя');
@@ -293,6 +296,30 @@ section('Объединить: список → подтверждение → P
   // после успеха модалки закрыты, показан тост
   assert($('.dub-confirm__ok').length === 0 && $('.dub-dups__merge').length === 0,
     'после объединения модалки закрыты');
+}
+
+/* 1е. Выбор главной записи: если выбрать дубль, стороны меняются местами */
+section('Объединить: выбор дубля главной меняет master/duplicate');
+{
+  resetEnv();
+  ajaxResponse = {
+    entity: { indexed: true },
+    count: 1,
+    duplicates: [{ amo_id: '201', name: 'Иван', matched_keys: [{ key_type: 'phone', key_norm: '999' }], matched_rules: [] }]
+  };
+  const widget = makeWidget('lcard-1');
+  widget.callbacks.render();
+  widget.callbacks.bind_actions();
+  $('#card-zone .dub__merge').trigger('click');
+  $('.dub-dups__merge').first().trigger('click');
+
+  // выбираем главной запись-дубль (201) — снимаем дефолт и включаем 201
+  $('.dub-confirm__master[value="123"]').prop('checked', false);
+  $('.dub-confirm__master[value="201"]').prop('checked', true);
+  $('.dub-confirm__ok').trigger('click');
+  const body = JSON.parse((ajaxCalls.find((c) => c.method === 'POST') || {}).data || '{}');
+  assert(String(body.master_amo_id) === '201' && String(body.duplicate_amo_id) === '123',
+    'master = выбранный дубль (201), duplicate = текущая карточка (123)');
 }
 
 section('Плашка: сущность ещё не проиндексирована');
