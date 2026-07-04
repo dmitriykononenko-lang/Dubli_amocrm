@@ -64,6 +64,24 @@ curl -X POST 'http://localhost:3000/api/matrix?account_id=123' \
   -d '{ "matrix": { "111:500": "S", "222:500": "B" } }'
 ```
 
+## Быстрый старт (Docker Compose)
+
+Поднимает Postgres + бэкенд одной командой; схема БД применяется автоматически
+при первом старте:
+
+```bash
+cd hidden_field/backend
+bash scripts/gen-env.sh          # создаст .env со сгенерированными ключами
+# впишите в .env: AMOCRM_CLIENT_ID, AMOCRM_CLIENT_SECRET, AMOCRM_REDIRECT_URI
+docker compose up --build        # http://localhost:3000 ; проверка: GET /health
+```
+
+`gen-env.sh` печатает `API_SECURITY_KEY` — впишите его в настройку виджета `api_token`.
+Наружу по HTTPS пробрасывается туннелем (`cloudflared`/`ngrok`) на порт 3000.
+
+> Схема применяется только при пустом томе БД. После правок `db/schema.sql`
+> пересоздайте БД: `docker compose down -v && docker compose up --build`.
+
 ## Требования
 
 - Node.js ≥ 20 (разработка на 22).

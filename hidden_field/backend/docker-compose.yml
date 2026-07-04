@@ -1,0 +1,37 @@
+# Быстрый старт бэкенда Hidden Field: Postgres + приложение одной командой.
+#   1) bash scripts/gen-env.sh    — создаст .env со сгенерированными ключами
+#   2) впишите AMOCRM_* в .env     — после создания приватной интеграции
+#   3) docker compose up --build   — http://localhost:3000 (проверка: GET /health)
+# Схема БД (db/schema.sql) применяется автоматически при первом старте (initdb).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: pg
+      POSTGRES_DB: hidden_field
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - hf_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hidden_field"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    env_file: .env
+    environment:
+      # подключение к БД переопределяем на сервис db (внутренняя сеть compose)
+      DATABASE_URL: postgres://postgres:pg@db:5432/hidden_field
+      DATABASE_SSL: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  hf_pgdata:
