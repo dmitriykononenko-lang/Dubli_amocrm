@@ -331,7 +331,16 @@
       <div class="aq-rule"></div>
       <div class="aq-status"><span class="aq-dot"></span>ONLINE &middot; FINE ART</div>
     </div>
-    <div class="aq-logo"><span>AQN</span></div>
+    <div class="aq-logo" aria-label="AQN">
+      <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <g fill="currentColor" font-family="'Playfair Display', Georgia, serif" text-anchor="middle">
+          <text x="45" y="76" font-size="52">A</text>
+          <text x="78" y="76" font-size="52">N</text>
+          <text x="61" y="83" font-size="34">Q</text>
+        </g>
+      </svg>
+    </div>
   </div>
   <div id="antiqon_chat_frame"></div>
   <!-- Маска: перекрывает строку брендинга Kommo внутри iframe. -->
@@ -369,13 +378,9 @@
   font-family:'Nunito Sans',sans-serif !important;
 }
 #antiqon-chat-header .aq-logo{
-  width:34px; height:34px; border:1px solid rgba(255,255,255,.35); border-radius:50%;
-  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  width:40px; height:40px; flex-shrink:0; color:#FFFFFF;
 }
-#antiqon-chat-header .aq-logo span{
-  font-family:'Playfair Display',serif; font-size:11px; letter-spacing:.02em;
-  color:#FFFFFF; line-height:1;
-}
+#antiqon-chat-header .aq-logo svg{ display:block; width:100%; height:100%; }
 /* Маска брендинга Kommo: полоса в цвет фона поверх всех слоёв Kommo. */
 #aq-footer-mask{
   position:absolute; left:0; right:0;
