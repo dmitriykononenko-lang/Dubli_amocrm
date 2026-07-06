@@ -1,0 +1,132 @@
+<!-- ===== ANTIQON CHAT · Kommo · FRAME MODE · v3 (без аватара и без строки Kommo) · вставить перед </body> ===== -->
+
+<!-- 1. Шрифты бренда -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Nunito+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<!-- 2. Контейнер чата со своим хедером (аватар убран по правке) -->
+<div id="antiqon-chat-shell" style="display:none;">
+  <div id="antiqon-chat-header">
+    <div class="aq-meta">
+      <div class="aq-name">Antiqon Curator</div>
+      <div class="aq-rule"></div>
+      <div class="aq-status"><span class="aq-dot"></span>ONLINE &middot; FINE ART</div>
+    </div>
+    <div class="aq-logo">A</div>
+  </div>
+  <div id="antiqon_chat_frame"></div>
+  <!-- Маска: перекрывает строку брендинга Kommo внутри iframe.
+       Без текста и в цвет фона — визуально просто пустая полоса. -->
+  <div id="aq-footer-mask" aria-hidden="true"></div>
+</div>
+
+<!-- 3. Стили хедера и темы -->
+<style>
+#antiqon-chat-shell{
+  position:fixed; right:24px; bottom:96px; z-index:9999;
+  width:340px; background:#141414; border:1px solid #2A2A2A;
+  border-radius:4px; overflow:hidden;
+  font-family:'Nunito Sans',sans-serif;
+}
+#antiqon-chat-header{
+  display:flex; align-items:center; gap:14px;
+  padding:20px 18px 18px; border-bottom:1px solid #2A2A2A;
+}
+#antiqon-chat-header .aq-meta{ flex:1; min-width:0; }
+#antiqon-chat-header .aq-name{
+  font-family:'Playfair Display',serif; font-size:16px; letter-spacing:.06em;
+  color:#FFFFFF; font-weight:500; line-height:1.1;
+}
+#antiqon-chat-header .aq-rule{
+  width:34px; height:1px; background:#CF6B1E; margin:8px 0 7px;
+}
+#antiqon-chat-header .aq-status{
+  display:flex; align-items:center; gap:7px;
+  font-size:9px; letter-spacing:.24em; color:#CF6B1E;
+}
+#antiqon-chat-header .aq-dot{
+  width:5px; height:5px; background:#CF6B1E; border-radius:50%;
+}
+#antiqon_chat_frame, #antiqon_chat_frame *{
+  font-family:'Nunito Sans',sans-serif !important;
+}
+#antiqon-chat-header .aq-logo{
+  width:28px; height:28px; border:1px solid #2A2A2A; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  font-family:'Playfair Display',serif; font-size:13px; color:#FFFFFF; opacity:.55;
+}
+/* Маска брендинга Kommo.
+   Строка «… Kommo» в frame-режиме находится СРАЗУ НАД полем ввода.
+   Полоса стоит вплотную над compose (его высота = 56px) и с запасом
+   перекрывает брендинг; цвет совпадает с фоном чата, поэтому шва не видно.
+   z-index намеренно максимальный — чтобы гарантированно лечь ПОВЕРХ
+   любого внутреннего слоя виджета Kommo.
+   Тонкая настройка (если понадобится): останется полоска снизу — уменьшите
+   bottom на 2-4px; заедет на поле ввода — увеличьте bottom на 2-4px. */
+#aq-footer-mask{
+  position:absolute; left:0; right:0;
+  bottom:70px; height:34px;
+  background:#141414;
+  z-index:2147483000;    /* поверх всех слоёв Kommo */
+  pointer-events:auto;   /* заодно гасит клик по логотипу Kommo */
+}
+</style>
+
+<!-- 4. Настройки чата: режим frame + наш контейнер (ДО кода кнопки) -->
+<script>
+window.crmPluginConfig = {
+  hidden: false,
+  color: '#141414',
+
+  onlinechat: {
+    mode: 'frame',
+    container: '#antiqon_chat_frame',
+
+    locale: {
+      extends: 'en',
+      date_format: 'dd.MM.yyyy',
+      time_format: 'HH:mm',
+      compose_placeholder: 'Write your question...',
+      delivery_status_sending: 'sending',
+      delivery_status_sent: 'sent',
+      delivery_status_read: 'read',
+      delivery_status_error: 'error',
+      powered_by: ' ',
+      new_messages: 'New messages'
+    },
+
+    theme: {
+      header: false,
+      background: '#141414',
+      system_color: '#CF6B1E',
+      message: {
+        incoming_background: '#1F1F1F',
+        incoming_color:      '#FFFFFF',
+        outgoing_background: '#CF6B1E',
+        outgoing_color:      '#FFFFFF'
+      },
+      compose: {
+        height: 56,
+        button_background: '#CF6B1E'
+      }
+    }
+  }
+};
+</script>
+
+<!-- 5. Код кнопки Kommo (аккаунт 1066627) -->
+<script>(function(a,m,o,c,r,m){a[m]={id:"1066627",hash:"d86a0f359c9728df45c36852233ee3e039963934591719bd910f35cf1d186048",locale:"en",setMeta:function(p){this.params=(this.params||[]).concat([p])}};a[o]=a[o]||function(){(a[o].q=a[o].q||[]).push(arguments)};var d=a.document,s=d.createElement('script');s.async=true;s.id=m+'_script';s.src='https://gso.kommo.com/js/button.js';d.head&&d.head.appendChild(s)}(window,0,'crmPlugin',0,0,'crm_plugin'));
+</script>
+
+<!-- 6. Показ/скрытие шелла: ТОЛЬКО при открытом чате. -->
+<script>
+crmPlugin('onChatShow', function () {
+  var s=document.getElementById('antiqon-chat-shell'); if(s)s.style.display='block';
+});
+crmPlugin('onChatHide', function () {
+  var s=document.getElementById('antiqon-chat-shell'); if(s)s.style.display='none';
+});
+</script>
+
+<!-- ===== /ANTIQON CHAT ===== -->

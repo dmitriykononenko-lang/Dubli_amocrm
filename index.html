@@ -326,13 +326,6 @@
 <!-- 2. Контейнер чата со своим хедером -->
 <div id="antiqon-chat-shell" style="display:none;">
   <div id="antiqon-chat-header">
-    <!-- Монограмма вместо фото-заглушки.
-         Когда появится реальное фото куратора — раскомментируйте <img>
-         и удалите <div class="aq-initial">A</div>. -->
-    <div class="aq-photo">
-      <!-- <img src="/img/curator.jpg" alt="Antiqon Curator"> -->
-      <div class="aq-initial">A</div>
-    </div>
     <div class="aq-meta">
       <div class="aq-name">Antiqon Curator</div>
       <div class="aq-rule"></div>
@@ -341,8 +334,8 @@
     <div class="aq-logo">A</div>
   </div>
   <div id="antiqon_chat_frame"></div>
-  <!-- Маска поверх строки "... Kommo" внутри iframe -->
-  <div id="aq-footer-mask">WITH RESPECT FOR HISTORY</div>
+  <!-- Маска: перекрывает строку брендинга Kommo внутри iframe. -->
+  <div id="aq-footer-mask" aria-hidden="true"></div>
 </div>
 
 <!-- 3. Стили хедера и темы -->
@@ -356,19 +349,6 @@
 #antiqon-chat-header{
   display:flex; align-items:center; gap:14px;
   padding:20px 18px 18px; border-bottom:1px solid #2A2A2A;
-}
-#antiqon-chat-header .aq-photo{
-  width:48px; height:48px; border-radius:50%; padding:2px;
-  border:1.5px solid #CF6B1E; box-sizing:border-box; flex-shrink:0;
-}
-#antiqon-chat-header .aq-photo img{
-  width:100%; height:100%; border-radius:50%; object-fit:cover; display:block;
-}
-#antiqon-chat-header .aq-initial{
-  width:100%; height:100%; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  background:#1F1F1F;
-  font-family:'Playfair Display',serif; font-size:20px; color:#CF6B1E;
 }
 #antiqon-chat-header .aq-meta{ flex:1; min-width:0; }
 #antiqon-chat-header .aq-name{
@@ -393,14 +373,13 @@
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
   font-family:'Playfair Display',serif; font-size:13px; color:#FFFFFF; opacity:.55;
 }
-/* Маска: накрывает "With respect for history Kommo" внутри iframe.
-   Если строка выглядывает — подстройте bottom (±4-6px) и height. */
+/* Маска брендинга Kommo: полоса в цвет фона поверх всех слоёв Kommo. */
 #aq-footer-mask{
-  position:absolute; left:0; right:0; bottom:76px; height:22px;
-  background:#141414; z-index:5;
-  display:flex; align-items:center; justify-content:center;
-  font-size:9px; letter-spacing:.24em; color:#CF6B1E;
-  pointer-events:auto; user-select:none;
+  position:absolute; left:0; right:0;
+  bottom:70px; height:34px;
+  background:#141414;
+  z-index:2147483000;
+  pointer-events:auto;
 }
 </style>
 
