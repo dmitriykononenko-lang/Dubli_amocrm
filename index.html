@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Antiqon — Fine Art & Antiquities · Test Page</title>
+
+<!-- Brand fonts (same as the chat widget) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Nunito+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#141414;
+    --panel:#1F1F1F;
+    --line:#2A2A2A;
+    --accent:#CF6B1E;
+    --text:#FFFFFF;
+    --muted:#A9A29B;
+    --serif:'Playfair Display',serif;
+    --sans:'Nunito Sans',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    font-weight:300;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 28px}
+
+  /* --- test banner --- */
+  #test-banner{
+    background:var(--accent);color:#141414;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    text-align:center;padding:9px 44px 9px 16px;position:relative;font-weight:600;
+  }
+  #test-banner b{font-weight:700}
+  #test-banner .close{
+    position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    cursor:pointer;font-size:16px;line-height:1;opacity:.7;background:none;border:0;color:#141414;
+  }
+  #test-banner .close:hover{opacity:1}
+
+  /* --- top nav --- */
+  header.nav{
+    position:sticky;top:0;z-index:500;
+    background:rgba(20,20,20,.86);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{display:flex;align-items:center;justify-content:space-between;height:74px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .mono{
+    width:38px;height:38px;border:1.5px solid var(--accent);border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--serif);font-size:19px;color:var(--accent);
+  }
+  .brand .word{font-family:var(--serif);font-size:20px;letter-spacing:.34em;font-weight:500}
+  nav.links{display:flex;gap:34px}
+  nav.links a{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);transition:color .2s}
+  nav.links a:hover{color:var(--accent)}
+  @media(max-width:760px){nav.links{display:none}}
+
+  /* --- hero --- */
+  .hero{
+    position:relative;min-height:82vh;display:flex;align-items:center;
+    background:
+      radial-gradient(120% 90% at 78% 12%, rgba(207,107,30,.18), transparent 55%),
+      linear-gradient(180deg,#161616 0%,#101010 100%);
+    overflow:hidden;
+  }
+  .hero::before{
+    content:"A";position:absolute;right:-4%;bottom:-16%;
+    font-family:var(--serif);font-size:44vw;line-height:.7;color:#fff;opacity:.025;pointer-events:none;
+  }
+  .hero-inner{padding:96px 0}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:12px;
+    font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--accent);margin-bottom:26px;
+  }
+  .eyebrow .bar{width:40px;height:1px;background:var(--accent)}
+  .hero h1{
+    font-family:var(--serif);font-weight:500;font-size:clamp(38px,6.4vw,78px);
+    line-height:1.04;letter-spacing:.01em;max-width:14ch;
+  }
+  .hero h1 em{font-style:italic;color:var(--accent)}
+  .hero p.lead{margin-top:26px;max-width:52ch;font-size:17px;color:var(--muted);font-weight:300}
+  .cta-row{display:flex;gap:16px;margin-top:40px;flex-wrap:wrap}
+  .btn{
+    display:inline-flex;align-items:center;gap:10px;
+    font-size:12px;letter-spacing:.2em;text-transform:uppercase;font-weight:600;
+    padding:15px 30px;border:1px solid var(--accent);cursor:pointer;transition:.2s;
+  }
+  .btn.primary{background:var(--accent);color:#141414}
+  .btn.primary:hover{background:#e07d2e;border-color:#e07d2e}
+  .btn.ghost{color:var(--text);background:transparent}
+  .btn.ghost:hover{background:rgba(207,107,30,.12)}
+
+  /* --- section shell --- */
+  section.block{padding:96px 0;border-top:1px solid var(--line)}
+  .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:48px;flex-wrap:wrap}
+  .sec-head .kicker{font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  .sec-head h2{font-family:var(--serif);font-weight:500;font-size:clamp(28px,4vw,44px);line-height:1.1}
+  .sec-head .side{max-width:38ch;color:var(--muted);font-size:14px}
+
+  /* --- collection grid --- */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+  @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .card{
+    background:var(--panel);border:1px solid var(--line);overflow:hidden;
+    transition:transform .25s,border-color .25s;
+  }
+  .card:hover{transform:translateY(-4px);border-color:var(--accent)}
+  .art{
+    height:270px;position:relative;display:flex;align-items:center;justify-content:center;
+  }
+  .art .frame{
+    position:absolute;inset:18px;border:2px solid rgba(207,107,30,.55);
+  }
+  .art .frame::after{content:"";position:absolute;inset:6px;border:1px solid rgba(255,255,255,.08)}
+  .art .glyph{font-family:var(--serif);font-size:64px;color:rgba(255,255,255,.12);z-index:1}
+  .art.a1{background:linear-gradient(135deg,#3a2a1c,#171310)}
+  .art.a2{background:linear-gradient(135deg,#2a2320,#141414)}
+  .art.a3{background:linear-gradient(135deg,#33231a,#12100e)}
+  .art.a4{background:linear-gradient(135deg,#241f1c,#161311)}
+  .art.a5{background:linear-gradient(135deg,#3a2c1e,#151210)}
+  .art.a6{background:linear-gradient(135deg,#292018,#131110)}
+  .card-body{padding:22px 22px 26px}
+  .card-body .lot{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  .card-body h3{font-family:var(--serif);font-weight:500;font-size:20px;line-height:1.25;margin-bottom:8px}
+  .card-body .era{color:var(--muted);font-size:13px}
+  .card-body .price{margin-top:16px;font-size:15px;color:var(--text);letter-spacing:.04em}
+  .card-body .price span{color:var(--muted);font-size:11px;letter-spacing:.2em;text-transform:uppercase;display:block;margin-bottom:2px}
+
+  /* --- about split --- */
+  .split{display:grid;grid-template-columns:1.05fr .95fr;gap:60px;align-items:center}
+  @media(max-width:820px){.split{grid-template-columns:1fr;gap:36px}}
+  .about-art{
+    aspect-ratio:4/5;border:1px solid var(--line);position:relative;
+    background:radial-gradient(90% 70% at 50% 30%,rgba(207,107,30,.16),transparent 60%),linear-gradient(160deg,#1d1712,#111);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .about-art .seal{
+    width:118px;height:118px;border:1.5px solid var(--accent);border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--serif);font-size:52px;color:var(--accent);
+  }
+  .about-copy .kicker{font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+  .about-copy h2{font-family:var(--serif);font-weight:500;font-size:clamp(26px,3.6vw,40px);line-height:1.12;margin-bottom:22px}
+  .about-copy p{color:var(--muted);margin-bottom:18px;font-size:15px}
+  .stats{display:flex;gap:40px;margin-top:32px;flex-wrap:wrap}
+  .stats .n{font-family:var(--serif);font-size:34px;color:var(--accent)}
+  .stats .l{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+  /* --- contact strip --- */
+  .contact{text-align:center}
+  .contact h2{font-family:var(--serif);font-weight:500;font-size:clamp(30px,4.6vw,52px);line-height:1.08;margin-bottom:20px}
+  .contact p{color:var(--muted);max-width:46ch;margin:0 auto 34px;font-size:16px}
+  .contact .hint{margin-top:26px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+
+  /* --- footer --- */
+  footer.site{border-top:1px solid var(--line);padding:40px 0}
+  .foot-inner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .foot-inner .respect{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:var(--accent)}
+  .foot-inner .copy{font-size:12px;color:var(--muted);letter-spacing:.06em}
+</style>
+</head>
+<body>
+
+<!-- Test-page notice (not part of the widget snippet) -->
+<div id="test-banner">
+  Test page · click the <b>chat button</b> in the bottom-right corner to open the Antiqon curator chat
+  <button class="close" onclick="document.getElementById('test-banner').style.display='none'" aria-label="close">&times;</button>
+</div>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">
+      <div class="mono">A</div>
+      <div class="word">ANTIQON</div>
+    </div>
+    <nav class="links">
+      <a href="#collection">Collection</a>
+      <a href="#about">Maison</a>
+      <a href="#contact">Enquire</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div class="eyebrow"><span class="bar"></span>Fine Art &middot; Antiquities &middot; Est. 1998</div>
+    <h1>Timeless works, <em>curated</em> for the discerning collector.</h1>
+    <p class="lead">Antiqon brings together museum-grade paintings, sculpture and objets d'art. Every piece is authenticated, catalogued and delivered with respect for its history.</p>
+    <div class="cta-row">
+      <a href="#collection" class="btn primary">View the collection</a>
+      <a href="#contact" class="btn ghost">Speak to a curator</a>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="collection">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="kicker">Featured lots</div>
+        <h2>This season's acquisitions</h2>
+      </div>
+      <div class="side">A rotating selection from private estates and European auction houses, available for immediate private sale.</div>
+    </div>
+    <div class="grid">
+      <article class="card">
+        <div class="art a1"><div class="frame"></div><div class="glyph">&#9998;</div></div>
+        <div class="card-body">
+          <div class="lot">Lot 014</div>
+          <h3>Portrait of a Noblewoman</h3>
+          <div class="era">Oil on canvas &middot; Flemish School, c. 1660</div>
+          <div class="price"><span>Private sale</span>€ 48,000</div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="art a2"><div class="frame"></div><div class="glyph">&#9819;</div></div>
+        <div class="card-body">
+          <div class="lot">Lot 027</div>
+          <h3>Bronze Study of Apollo</h3>
+          <div class="era">Patinated bronze &middot; Grand Tour, 19th c.</div>
+          <div class="price"><span>Private sale</span>€ 22,500</div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="art a3"><div class="frame"></div><div class="glyph">&#10057;</div></div>
+        <div class="card-body">
+          <div class="lot">Lot 031</div>
+          <h3>Still Life with Pomegranates</h3>
+          <div class="era">Oil on panel &middot; Dutch Golden Age</div>
+          <div class="price"><span>Private sale</span>€ 63,000</div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="art a4"><div class="frame"></div><div class="glyph">&#9770;</div></div>
+        <div class="card-body">
+          <div class="lot">Lot 045</div>
+          <h3>Marble Bust, Roman Matron</h3>
+          <div class="era">Carrara marble &middot; after the Antique</div>
+          <div class="price"><span>Private sale</span>€ 38,900</div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="art a5"><div class="frame"></div><div class="glyph">&#9836;</div></div>
+        <div class="card-body">
+          <div class="lot">Lot 052</div>
+          <h3>Venetian Veduta at Dusk</h3>
+          <div class="era">Oil on canvas &middot; Circle of Canaletto</div>
+          <div class="price"><span>Private sale</span>€ 71,000</div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="art a6"><div class="frame"></div><div class="glyph">&#10070;</div></div>
+        <div class="card-body">
+          <div class="lot">Lot 060</div>
+          <h3>Gilt Rococo Console</h3>
+          <div class="era">Carved giltwood &middot; France, 18th c.</div>
+          <div class="price"><span>Private sale</span>€ 29,400</div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="about">
+  <div class="wrap split">
+    <div class="about-art"><div class="seal">A</div></div>
+    <div class="about-copy">
+      <div class="kicker">The Maison</div>
+      <h2>Twenty-five years of connoisseurship</h2>
+      <p>Founded in 1998, Antiqon has quietly built a reputation among collectors, institutions and interior architects for sourcing exceptional works with impeccable provenance.</p>
+      <p>Our curators guide each acquisition personally — from first enquiry to white-glove delivery — so that every object arrives with the care its history deserves.</p>
+      <div class="stats">
+        <div><div class="n">1,400+</div><div class="l">Works placed</div></div>
+        <div><div class="n">32</div><div class="l">Countries served</div></div>
+        <div><div class="n">100%</div><div class="l">Authenticated</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block contact" id="contact">
+  <div class="wrap">
+    <div class="kicker" style="color:var(--accent);letter-spacing:.32em;text-transform:uppercase;font-size:11px;margin-bottom:18px">Enquire</div>
+    <h2>Speak with a curator today</h2>
+    <p>Looking for a particular master, period or medium? Open the chat and one of our curators will assist you personally.</p>
+    <a href="#" class="btn primary" onclick="if(window.crmPlugin){crmPlugin('showChat')}return false;">Open the chat</a>
+    <div class="hint">Chat button is fixed in the bottom-right corner</div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap foot-inner">
+    <div class="brand">
+      <div class="mono">A</div>
+      <div class="word" style="font-size:16px">ANTIQON</div>
+    </div>
+    <div class="respect">With respect for history</div>
+    <div class="copy">&copy; 1998&ndash;2026 Antiqon &middot; Fine Art &amp; Antiquities</div>
+  </div>
+</footer>
+
+
+<!-- ===================================================================== -->
+<!--  ANTIQON CHAT WIDGET  ·  вставлено ПЕРЕД </body> (без изменений)       -->
+<!-- ===================================================================== -->
+
+<!-- ===== ANTIQON CHAT · Kommo · FRAME MODE · v2 (без заглушки и без "Kommo") · вставить перед </body> ===== -->
+
+<!-- 1. Шрифты бренда -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Nunito+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<!-- 2. Контейнер чата со своим хедером -->
+<div id="antiqon-chat-shell" style="display:none;">
+  <div id="antiqon-chat-header">
+    <!-- Монограмма вместо фото-заглушки.
+         Когда появится реальное фото куратора — раскомментируйте <img>
+         и удалите <div class="aq-initial">A</div>. -->
+    <div class="aq-photo">
+      <!-- <img src="/img/curator.jpg" alt="Antiqon Curator"> -->
+      <div class="aq-initial">A</div>
+    </div>
+    <div class="aq-meta">
+      <div class="aq-name">Antiqon Curator</div>
+      <div class="aq-rule"></div>
+      <div class="aq-status"><span class="aq-dot"></span>ONLINE &middot; FINE ART</div>
+    </div>
+    <div class="aq-logo">A</div>
+  </div>
+  <div id="antiqon_chat_frame"></div>
+  <!-- Маска поверх строки "... Kommo" внутри iframe -->
+  <div id="aq-footer-mask">WITH RESPECT FOR HISTORY</div>
+</div>
+
+<!-- 3. Стили хедера и темы -->
+<style>
+#antiqon-chat-shell{
+  position:fixed; right:24px; bottom:96px; z-index:9999;
+  width:340px; background:#141414; border:1px solid #2A2A2A;
+  border-radius:4px; overflow:hidden;
+  font-family:'Nunito Sans',sans-serif;
+}
+#antiqon-chat-header{
+  display:flex; align-items:center; gap:14px;
+  padding:20px 18px 18px; border-bottom:1px solid #2A2A2A;
+}
+#antiqon-chat-header .aq-photo{
+  width:48px; height:48px; border-radius:50%; padding:2px;
+  border:1.5px solid #CF6B1E; box-sizing:border-box; flex-shrink:0;
+}
+#antiqon-chat-header .aq-photo img{
+  width:100%; height:100%; border-radius:50%; object-fit:cover; display:block;
+}
+#antiqon-chat-header .aq-initial{
+  width:100%; height:100%; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:#1F1F1F;
+  font-family:'Playfair Display',serif; font-size:20px; color:#CF6B1E;
+}
+#antiqon-chat-header .aq-meta{ flex:1; min-width:0; }
+#antiqon-chat-header .aq-name{
+  font-family:'Playfair Display',serif; font-size:16px; letter-spacing:.06em;
+  color:#FFFFFF; font-weight:500; line-height:1.1;
+}
+#antiqon-chat-header .aq-rule{
+  width:34px; height:1px; background:#CF6B1E; margin:8px 0 7px;
+}
+#antiqon-chat-header .aq-status{
+  display:flex; align-items:center; gap:7px;
+  font-size:9px; letter-spacing:.24em; color:#CF6B1E;
+}
+#antiqon-chat-header .aq-dot{
+  width:5px; height:5px; background:#CF6B1E; border-radius:50%;
+}
+#antiqon_chat_frame, #antiqon_chat_frame *{
+  font-family:'Nunito Sans',sans-serif !important;
+}
+#antiqon-chat-header .aq-logo{
+  width:28px; height:28px; border:1px solid #2A2A2A; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  font-family:'Playfair Display',serif; font-size:13px; color:#FFFFFF; opacity:.55;
+}
+/* Маска: накрывает "With respect for history Kommo" внутри iframe.
+   Если строка выглядывает — подстройте bottom (±4-6px) и height. */
+#aq-footer-mask{
+  position:absolute; left:0; right:0; bottom:76px; height:22px;
+  background:#141414; z-index:5;
+  display:flex; align-items:center; justify-content:center;
+  font-size:9px; letter-spacing:.24em; color:#CF6B1E;
+  pointer-events:auto; user-select:none;
+}
+</style>
+
+<!-- 4. Настройки чата: режим frame + наш контейнер (ДО кода кнопки) -->
+<script>
+window.crmPluginConfig = {
+  hidden: false,
+  color: '#141414',
+
+  onlinechat: {
+    mode: 'frame',
+    container: '#antiqon_chat_frame',
+
+    locale: {
+      extends: 'en',
+      date_format: 'dd.MM.yyyy',
+      time_format: 'HH:mm',
+      compose_placeholder: 'Write your question...',
+      delivery_status_sending: 'sending',
+      delivery_status_sent: 'sent',
+      delivery_status_read: 'read',
+      delivery_status_error: 'error',
+      powered_by: ' ',
+      new_messages: 'New messages'
+    },
+
+    theme: {
+      header: false,
+      background: '#141414',
+      system_color: '#CF6B1E',
+      message: {
+        incoming_background: '#1F1F1F',
+        incoming_color:      '#FFFFFF',
+        outgoing_background: '#CF6B1E',
+        outgoing_color:      '#FFFFFF'
+      },
+      compose: {
+        height: 56,
+        button_background: '#CF6B1E'
+      }
+    }
+  }
+};
+</script>
+
+<!-- 5. Код кнопки Kommo (аккаунт 1066627) -->
+<script>(function(a,m,o,c,r,m){a[m]={id:"1066627",hash:"d86a0f359c9728df45c36852233ee3e039963934591719bd910f35cf1d186048",locale:"en",setMeta:function(p){this.params=(this.params||[]).concat([p])}};a[o]=a[o]||function(){(a[o].q=a[o].q||[]).push(arguments)};var d=a.document,s=d.createElement('script');s.async=true;s.id=m+'_script';s.src='https://gso.kommo.com/js/button.js';d.head&&d.head.appendChild(s)}(window,0,'crmPlugin',0,0,'crm_plugin'));
+</script>
+
+<!-- 6. Показ/скрытие шелла: ТОЛЬКО при открытом чате.
+     На onChatReady ничего не показываем — иначе хедер висит на странице
+     при закрытом чате (правка из ТЗ). -->
+<script>
+crmPlugin('onChatShow', function () {
+  var s=document.getElementById('antiqon-chat-shell'); if(s)s.style.display='block';
+});
+crmPlugin('onChatHide', function () {
+  var s=document.getElementById('antiqon-chat-shell'); if(s)s.style.display='none';
+});
+</script>
+
+<!-- ===== /ANTIQON CHAT ===== -->
+
+</body>
+</html>
