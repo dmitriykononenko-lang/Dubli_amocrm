@@ -133,44 +133,4 @@ crmPlugin('onChatHide', function () {
 });
 </script>
 
-<!-- 7. Скрываем подписи/тултипы Kommo (Made by Kommo, названия каналов,
-     служебный ярлык «… social network list»). Работает независимо от
-     классов Kommo: прячет элементы с известным текстом и снимает title-тултипы. -->
-<script>
-(function () {
-  var KILL = [
-    'Made by Kommo',
-    'Kommo CRM Plugin social network list',
-    'Whatsapp', 'WhatsApp',
-    'Онлайн-чат', 'Online chat', 'Online-chat', 'Онлайн чат'
-  ];
-  function inKill(t){ t = (t || '').trim(); return !!t && KILL.indexOf(t) !== -1; }
-  function clean(){
-    var titled = document.querySelectorAll('[title]'), i;
-    for (i = 0; i < titled.length; i++){
-      if (inKill(titled[i].getAttribute('title'))) titled[i].removeAttribute('title');
-    }
-    var nodes = document.querySelectorAll('div,span,p,a,button,li'), el;
-    for (i = 0; i < nodes.length; i++){
-      el = nodes[i];
-      if (el.children.length === 0 && inKill(el.textContent)){
-        el.style.setProperty('display', 'none', 'important');
-      }
-    }
-  }
-  var scheduled = false;
-  function schedule(){
-    if (scheduled) return; scheduled = true;
-    (window.requestAnimationFrame || window.setTimeout)(function(){ scheduled = false; clean(); });
-  }
-  try {
-    new MutationObserver(schedule).observe(document.documentElement,
-      { childList: true, subtree: true, attributes: true, attributeFilter: ['title'] });
-  } catch (e) {}
-  var n = 0, iv = setInterval(function(){ clean(); if (++n > 60) clearInterval(iv); }, 250);
-  if (document.readyState !== 'loading') clean();
-  else document.addEventListener('DOMContentLoaded', clean);
-})();
-</script>
-
 <!-- ===== /ANTIQON CHAT ===== -->
