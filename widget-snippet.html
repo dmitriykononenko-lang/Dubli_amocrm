@@ -13,7 +13,7 @@
       <div class="aq-rule"></div>
       <div class="aq-status"><span class="aq-dot"></span>ONLINE &middot; FINE ART</div>
     </div>
-    <div class="aq-logo">A</div>
+    <div class="aq-logo"><span>AQN</span></div>
   </div>
   <div id="antiqon_chat_frame"></div>
   <!-- Маска: перекрывает строку брендинга Kommo внутри iframe.
@@ -35,8 +35,8 @@
 }
 #antiqon-chat-header .aq-meta{ flex:1; min-width:0; }
 #antiqon-chat-header .aq-name{
-  font-family:'Playfair Display',serif; font-size:16px; letter-spacing:.06em;
-  color:#FFFFFF; font-weight:500; line-height:1.1;
+  font-family:'Playfair Display',serif; font-size:16px; letter-spacing:.12em;
+  color:#FFFFFF; font-weight:500; line-height:1.22;
 }
 #antiqon-chat-header .aq-rule{
   width:34px; height:1px; background:#CF6B1E; margin:8px 0 7px;
@@ -52,9 +52,12 @@
   font-family:'Nunito Sans',sans-serif !important;
 }
 #antiqon-chat-header .aq-logo{
-  width:28px; height:28px; border:1px solid #2A2A2A; border-radius:50%;
+  width:34px; height:34px; border:1px solid rgba(255,255,255,.35); border-radius:50%;
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
-  font-family:'Playfair Display',serif; font-size:13px; color:#FFFFFF; opacity:.55;
+}
+#antiqon-chat-header .aq-logo span{
+  font-family:'Playfair Display',serif; font-size:11px; letter-spacing:.02em;
+  color:#FFFFFF; line-height:1;
 }
 /* Маска брендинга Kommo.
    Строка «… Kommo» в frame-режиме находится СРАЗУ НАД полем ввода.
