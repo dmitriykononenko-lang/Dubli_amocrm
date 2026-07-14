@@ -3,7 +3,7 @@ import { requireAccountId } from '../common/db/account-scope';
 import type { EntityType, KeyType } from '../common/db/database.types';
 import { RulesRepository } from '../rules/rules.repository';
 import { DuplicatesRepository } from './duplicates.repository';
-import { evaluateRules } from './duplicate-detector';
+import { evaluateRules, ruleSatisfied } from './duplicate-detector';
 
 export interface MatchedKey {
   key_type: KeyType;
@@ -95,6 +95,53 @@ export class DuplicatesService {
       count: duplicates.length,
       duplicates,
     };
+  }
+
+  /**
+   * Однозначная пара для авто-слияния: если найден ровно один кандидат, удовлетворяющий
+   * правилу с auto_merge, вернуть пару (главная — более старая запись = меньший amo_id).
+   * Иначе null (нет дублей / нет auto_merge-правил / неоднозначно — оставляем ручному режиму).
+   */
+  async findAutoMergeTarget(
+    accountId: string,
+    entityType: EntityType,
+    amoId: string,
+  ): Promise<{ masterAmoId: string; duplicateAmoId: string } | null> {
+    requireAccountId(accountId);
+    const targetId = await this.repo.findEntityId(accountId, entityType, amoId);
+    if (targetId === undefined) return null;
+
+    const [matches, rules] = await Promise.all([
+      this.repo.findCandidateMatches({ accountId, entityType, targetEntityId: targetId }),
+      this.rules.findEnabled(accountId, entityType),
+    ]);
+    const autoRules = rules.filter((r) => r.auto_merge);
+    if (autoRules.length === 0) return null;
+
+    // key_type-множества по кандидату (amo_id → Set<KeyType>)
+    const byCandidate = new Map<string, Set<KeyType>>();
+    for (const row of matches) {
+      let set = byCandidate.get(row.amo_id);
+      if (!set) {
+        set = new Set<KeyType>();
+        byCandidate.set(row.amo_id, set);
+      }
+      set.add(row.key_type);
+    }
+
+    const hits: string[] = [];
+    for (const [candidateAmoId, types] of byCandidate) {
+      if (autoRules.some((r) => ruleSatisfied(types, r))) hits.push(candidateAmoId);
+    }
+    if (hits.length !== 1) return null; // 0 или неоднозначно (>1) — авто-слияние пропускаем
+
+    // главная — более старая запись (меньший amo_id), вторая — дубль
+    const other = hits[0];
+    const [masterAmoId, duplicateAmoId] =
+      amoId.localeCompare(other, undefined, { numeric: true }) <= 0
+        ? [amoId, other]
+        : [other, amoId];
+    return { masterAmoId, duplicateAmoId };
   }
 }
 

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { AccountsService } from '../accounts/accounts.service';
 import { EntitiesService } from '../entities/entities.service';
 import { AuditService } from '../common/audit/audit.service';
+import { AutoMergeService } from '../merge/auto-merge.service';
 import { WebhookEventsRepository } from './webhook-events.repository';
 import { parseWebhook } from './webhook-parser';
 import type { WebhookEvent } from './amo-webhook.types';
@@ -14,6 +15,7 @@ export class WebhooksService {
     private readonly entities: EntitiesService,
     private readonly events: WebhookEventsRepository,
     private readonly audit: AuditService,
+    private readonly autoMerge: AutoMergeService,
   ) {}
 
   /** Приём вебхука: дедуп → (индексация | удаление) → пометка обработанным. */
@@ -36,6 +38,8 @@ export class WebhooksService {
         await this.entities.remove(accountId, ev.entityType, ev.amoId);
       } else {
         await this.entities.indexEntity(accountId, ev.entityType, ev.amoId, ev.raw);
+        // Авто-слияние по правилам (best-effort, не роняет приём вебхука).
+        await this.autoMerge.tryForEntity(accountId, ev.entityType, ev.amoId);
       }
       await this.events.markProcessed(accountId, eventId);
       processed++;

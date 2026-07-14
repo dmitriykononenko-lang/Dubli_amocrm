@@ -9,5 +9,6 @@ import { DuplicatesRepository } from './duplicates.repository';
   imports: [ApiAuthModule, RulesModule],
   controllers: [DuplicatesController],
   providers: [DuplicatesService, DuplicatesRepository],
+  exports: [DuplicatesService],
 })
 export class DuplicatesModule {}

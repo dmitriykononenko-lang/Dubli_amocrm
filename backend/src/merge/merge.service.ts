@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { requireAccountId } from '../common/db/account-scope';
-import type { EntityType } from '../common/db/database.types';
+import type { EntityType, MergeMode } from '../common/db/database.types';
 import { AmocrmService } from '../amocrm/amocrm.service';
 import { EntitiesService } from '../entities/entities.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -13,6 +13,7 @@ export interface MergeInput {
   masterAmoId: string;
   duplicateAmoId: string;
   authorUserId?: string | null;
+  mode?: MergeMode; // 'manual' (по умолчанию) | 'auto' (по правилу auto_merge)
 }
 
 export interface MergeResult {
@@ -82,7 +83,7 @@ export class MergeService {
       entityType,
       masterAmoId,
       duplicateAmoId,
-      mode: 'manual',
+      mode: input.mode ?? 'manual',
       authorUserId: input.authorUserId ?? null,
       transferred,
       snapshots: [

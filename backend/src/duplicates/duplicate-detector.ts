@@ -19,17 +19,20 @@ export function evaluateRules(matched: Set<KeyType>, rules: EnabledRule[]): Rule
   if (rules.length === 0) {
     return { isDuplicate: matched.size > 0, matchedRules: [] };
   }
-  const matchedRules: string[] = [];
-  for (const rule of rules) {
-    const required = ruleKeyTypes(rule);
-    if (required.length === 0) continue; // правило без полей не срабатывает
-    const ok =
-      rule.operator === 'AND'
-        ? required.every((kt) => matched.has(kt))
-        : required.some((kt) => matched.has(kt));
-    if (ok) matchedRules.push(rule.name);
-  }
+  const matchedRules = rules.filter((r) => ruleSatisfied(matched, r)).map((r) => r.name);
   return { isDuplicate: matchedRules.length > 0, matchedRules };
+}
+
+/**
+ * Сработало ли одно правило на наборе совпавших key_type: AND — все ключи правила,
+ * OR — хотя бы один. Правило без полей не срабатывает.
+ */
+export function ruleSatisfied(matched: Set<KeyType>, rule: EnabledRule): boolean {
+  const required = ruleKeyTypes(rule);
+  if (required.length === 0) return false;
+  return rule.operator === 'AND'
+    ? required.every((kt) => matched.has(kt))
+    : required.some((kt) => matched.has(kt));
 }
 
 /** Уникальные key_type, упомянутые в полях правила. */

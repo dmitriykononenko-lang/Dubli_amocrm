@@ -3,7 +3,7 @@ import type { EnabledRule } from '../../rules/rules.repository';
 import type { KeyType } from '../../common/db/database.types';
 
 function rule(partial: Partial<EnabledRule> & Pick<EnabledRule, 'name' | 'operator'>): EnabledRule {
-  return { id: '1', fields: [], ...partial };
+  return { id: '1', fields: [], auto_merge: false, ...partial };
 }
 function matched(...types: KeyType[]): Set<KeyType> {
   return new Set(types);

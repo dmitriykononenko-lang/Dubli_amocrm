@@ -9,6 +9,7 @@ export interface EnabledRule {
   name: string;
   fields: RuleField[];
   operator: RuleOperator;
+  auto_merge: boolean;
 }
 
 /** Полное правило для CRUD (без account_id — скоуп задаётся снаружи). */
@@ -60,7 +61,7 @@ export class RulesRepository {
     requireAccountId(accountId);
     const rows = await this.db
       .selectFrom('rules')
-      .select(['id', 'name', 'fields', 'operator'])
+      .select(['id', 'name', 'fields', 'operator', 'auto_merge'])
       .where('account_id', '=', accountId)
       .where('entity_type', '=', entityType)
       .where('enabled', '=', true)
@@ -70,6 +71,7 @@ export class RulesRepository {
       name: r.name,
       fields: r.fields ?? [],
       operator: r.operator,
+      auto_merge: r.auto_merge,
     }));
   }
 
