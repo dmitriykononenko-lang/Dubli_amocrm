@@ -9,6 +9,7 @@ import { VisibilityService, type ConfigResult, type MetaResult } from './visibil
  *   GET  /api/meta?account_id=             — поля/пользователи/воронки + матрица (экран настроек)
  *   GET  /api/config?account_id=&user_id=  — режимы полей пользователя (применение в карточке)
  *   POST /api/matrix?account_id=           — сохранение матрицы (тело: { matrix })
+ *   POST /api/funnels?account_id=          — сохранение настроек воронок для режима V (тело: { funnels })
  */
 @Controller('api')
 @UseGuards(ApiSecurityGuard)
@@ -31,5 +32,13 @@ export class VisibilityController {
     @Body() body: { matrix?: unknown },
   ): Promise<{ saved: number }> {
     return this.service.saveMatrix(accountId, body?.matrix);
+  }
+
+  @Post('funnels')
+  saveFunnels(
+    @AccountId() accountId: string,
+    @Body() body: { funnels?: unknown },
+  ): Promise<{ saved: number }> {
+    return this.service.saveFunnels(accountId, body?.funnels);
   }
 }

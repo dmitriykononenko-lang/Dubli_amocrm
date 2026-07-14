@@ -100,6 +100,23 @@ describeDb('Hidden Field e2e (matrix/config/meta)', () => {
     expect(res.body.matrix['111:500']).toBe('S');
   });
 
+  it('сохраняет настройки воронки и отдаёт их в config (режим V)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/funnels')
+      .query({ account_id: ACCOUNT_ID })
+      .set('X-Security-Key', SECURITY_KEY)
+      .send({ funnels: { '1:111': 'S', '1:222': 'O' } }) // 'O' не хранится
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get('/api/config')
+      .query({ account_id: ACCOUNT_ID, user_id: USER })
+      .set('X-Security-Key', SECURITY_KEY)
+      .expect(200);
+
+    expect(res.body.funnels).toEqual({ '1': { '111': 'S' } });
+  });
+
   it('неверный security_key → 401', async () => {
     await request(app.getHttpServer())
       .post('/api/matrix')

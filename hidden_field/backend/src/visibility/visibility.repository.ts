@@ -10,9 +10,17 @@ export interface MatrixRow {
   mode: FieldMode;
 }
 
+export interface FunnelRow {
+  pipeline_id: string;
+  field_id: string;
+  mode: FieldMode;
+}
+
 @Injectable()
 export class VisibilityRepository {
   constructor(@Inject(KYSELY) private readonly db: Kysely<DB>) {}
+
+  /* ------------------------- матрица «поле × пользователь» ------------------------- */
 
   /** Вся матрица аккаунта (для экрана настроек). */
   async findAll(accountId: string): Promise<MatrixRow[]> {
@@ -50,6 +58,39 @@ export class VisibilityRepository {
           rows.map((r) => ({
             account_id: accountId,
             user_id: r.user_id,
+            field_id: r.field_id,
+            mode: r.mode,
+            updated_at: new Date(),
+          })),
+        )
+        .execute();
+    });
+  }
+
+  /* ----------------------------- настройки воронок (V) ----------------------------- */
+
+  /** Все настройки воронок аккаунта. */
+  async findFunnels(accountId: string): Promise<FunnelRow[]> {
+    requireAccountId(accountId);
+    return this.db
+      .selectFrom('visibility_funnels')
+      .select(['pipeline_id', 'field_id', 'mode'])
+      .where('account_id', '=', accountId)
+      .execute();
+  }
+
+  /** Полная замена настроек воронок аккаунта — атомарно. */
+  async replaceFunnels(accountId: string, rows: FunnelRow[]): Promise<void> {
+    requireAccountId(accountId);
+    await this.db.transaction().execute(async (trx) => {
+      await trx.deleteFrom('visibility_funnels').where('account_id', '=', accountId).execute();
+      if (rows.length === 0) return;
+      await trx
+        .insertInto('visibility_funnels')
+        .values(
+          rows.map((r) => ({
+            account_id: accountId,
+            pipeline_id: r.pipeline_id,
             field_id: r.field_id,
             mode: r.mode,
             updated_at: new Date(),

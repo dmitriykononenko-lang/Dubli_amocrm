@@ -60,6 +60,22 @@ CREATE INDEX IF NOT EXISTS idx_visibility_matrix_user
   ON visibility_matrix (account_id, user_id);
 
 -- =========================================================================
+-- visibility_funnels — настройки видимости на уровне воронки (для режима V).
+-- Когда ячейка «поле × пользователь» = V, пользователь наследует режим воронки
+-- для этого поля. Хранятся только режимы S/*/B (O = по умолчанию, не хранится).
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS visibility_funnels (
+  account_id  BIGINT      NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  pipeline_id BIGINT      NOT NULL,                        -- id воронки amoCRM
+  field_id    TEXT        NOT NULL,                        -- id поля amoCRM или код системного поля
+  mode        field_mode  NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, pipeline_id, field_id)
+);
+CREATE INDEX IF NOT EXISTS idx_visibility_funnels_pipeline
+  ON visibility_funnels (account_id, pipeline_id);
+
+-- =========================================================================
 -- audit_log — аудит (установка, использование токенов, сохранение матрицы)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS audit_log (

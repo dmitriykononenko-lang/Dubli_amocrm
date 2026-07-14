@@ -64,6 +64,18 @@ export interface VisibilityMatrixTable {
   updated_at: TsDefault;
 }
 
+/**
+ * Настройки видимости на уровне воронки — их наследует режим V.
+ * Хранятся только режимы S, * и B; отсутствие строки = 'O' (открыто).
+ */
+export interface VisibilityFunnelsTable {
+  account_id: BigIntStr;
+  pipeline_id: BigIntStr;
+  field_id: string; // id поля amoCRM или код системного поля → TEXT
+  mode: ColumnType<FieldMode, FieldMode, FieldMode>;
+  updated_at: TsDefault;
+}
+
 export interface AuditLogTable {
   id: IdentityId;
   account_id: BigIntStr | null;
@@ -77,5 +89,6 @@ export interface DB {
   accounts: AccountsTable;
   oauth_tokens: OauthTokensTable;
   visibility_matrix: VisibilityMatrixTable;
+  visibility_funnels: VisibilityFunnelsTable;
   audit_log: AuditLogTable;
 }

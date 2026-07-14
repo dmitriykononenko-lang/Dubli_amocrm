@@ -49,7 +49,7 @@
 ```jsonc
 {
   "rules":   { "111": { "*": { "*": "S" } } },  // rules[fieldId][entity][pipeline] = mode
-  "funnels": {}                                  // наследование воронки — следующая очередь
+  "funnels": { "7": { "111": "S" } }             // настройки воронок — их наследует режим V
 }
 ```
 
@@ -62,6 +62,18 @@
 curl -X POST 'http://localhost:3000/api/matrix?account_id=123' \
   -H 'X-Security-Key: <key>' -H 'Content-Type: application/json' \
   -d '{ "matrix": { "111:500": "S", "222:500": "B" } }'
+```
+
+### `POST /api/funnels?account_id=`
+
+Настройки видимости на уровне воронки (их наследует режим `V`). Тело
+`{ "funnels": { "pipeline:field": mode } }`, допустимы режимы `S`/`*`/`B`.
+Полная замена; возвращает `{ "saved": <число> }`.
+
+```bash
+curl -X POST 'http://localhost:3000/api/funnels?account_id=123' \
+  -H 'X-Security-Key: <key>' -H 'Content-Type: application/json' \
+  -d '{ "funnels": { "7:111": "S", "7:222": "B" } }'
 ```
 
 ## Быстрый старт (Docker Compose)

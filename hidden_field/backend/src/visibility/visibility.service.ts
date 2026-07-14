@@ -3,9 +3,11 @@ import { requireAccountId } from '../common/db/account-scope';
 import { AuditService } from '../common/audit/audit.service';
 import { AmocrmService } from '../amocrm/amocrm.service';
 import type { EntityType, FieldMode } from '../common/db/database.types';
-import { VisibilityRepository, type MatrixRow } from './visibility.repository';
+import { VisibilityRepository, type FunnelRow, type MatrixRow } from './visibility.repository';
 
 const MODES: FieldMode[] = ['O', 'S', '*', 'B', 'V'];
+// Режимы, допустимые на уровне воронки: V наследовать нельзя, O — по умолчанию (не хранится).
+const FUNNEL_MODES: FieldMode[] = ['S', '*', 'B'];
 const ENTITIES: EntityType[] = ['lead', 'contact', 'company'];
 
 // Системные поля amoCRM (нет в custom_fields API) — добавляем в матрицу вручную.
@@ -49,18 +51,22 @@ export interface MetaPipeline {
   name: string;
 }
 
+// Настройки воронок: { pipelineId: { fieldId: mode } }.
+export type FunnelsMap = Record<string, Record<string, FieldMode>>;
+
 export interface MetaResult {
   fields: MetaField[];
   users: MetaUser[];
   pipelines: MetaPipeline[];
   matrix: Record<string, FieldMode>; // "field:user" -> mode
+  funnels: FunnelsMap; // "pipeline" -> { field -> mode } (для режима V)
   groups: unknown[]; // виртуальные группы — вне MVP
 }
 
 // Формат, который ждёт resolveMode() во фронтенде: rules[fieldId][entity][pipeline] = mode.
 export interface ConfigResult {
   rules: Record<string, Record<string, Record<string, FieldMode>>>;
-  funnels: Record<string, Record<string, FieldMode>>;
+  funnels: FunnelsMap;
 }
 
 @Injectable()
@@ -71,15 +77,24 @@ export class VisibilityService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Метаданные для экрана настроек: поля, пользователи, воронки + текущая матрица. */
+  private buildFunnels(rows: FunnelRow[]): FunnelsMap {
+    const funnels: FunnelsMap = {};
+    for (const r of rows) {
+      (funnels[r.pipeline_id] ??= {})[r.field_id] = r.mode;
+    }
+    return funnels;
+  }
+
+  /** Метаданные для экрана настроек: поля, пользователи, воронки + текущая матрица и настройки воронок. */
   async getMeta(accountId: string): Promise<MetaResult> {
     requireAccountId(accountId);
 
-    const [fieldsByEntity, users, pipelines, rows] = await Promise.all([
+    const [fieldsByEntity, users, pipelines, rows, funnelRows] = await Promise.all([
       Promise.all(ENTITIES.map((e) => this.amocrm.getCustomFields(accountId, e))),
       this.amocrm.getUsers(accountId),
       this.amocrm.getPipelines(accountId),
       this.repo.findAll(accountId),
+      this.repo.findFunnels(accountId),
     ]);
 
     const fields: MetaField[] = [];
@@ -101,6 +116,7 @@ export class VisibilityService {
       users: users.map((u) => ({ id: String(u.id), name: u.name })),
       pipelines: pipelines.map((p) => ({ id: String(p.id), name: p.name })),
       matrix,
+      funnels: this.buildFunnels(funnelRows),
       groups: [],
     };
   }
@@ -108,17 +124,24 @@ export class VisibilityService {
   /**
    * Конфигурация режимов для текущего пользователя — в формате resolveMode().
    * MVP: режим применяется ко всем сущностям и воронкам → ключи '*'.
+   * funnels — настройки воронок аккаунта: их наследует режим V (резолв — на фронте,
+   * т.к. текущая воронка карточки известна только в браузере).
    */
   async getConfigForUser(accountId: string, userId: string): Promise<ConfigResult> {
     requireAccountId(accountId);
     if (!userId) throw new BadRequestException('user_id обязателен');
-    const rows = await this.repo.findByUser(accountId, userId);
+
+    const [rows, funnelRows] = await Promise.all([
+      this.repo.findByUser(accountId, userId),
+      this.repo.findFunnels(accountId),
+    ]);
+
     const rules: ConfigResult['rules'] = {};
     for (const r of rows) {
       if (r.mode === 'O') continue;
       rules[r.field_id] = { '*': { '*': r.mode } };
     }
-    return { rules, funnels: {} };
+    return { rules, funnels: this.buildFunnels(funnelRows) };
   }
 
   /**
@@ -145,6 +168,37 @@ export class VisibilityService {
 
     await this.repo.replaceAll(accountId, rows);
     await this.audit.log({ accountId, action: 'matrix_save', meta: { saved: rows.length } });
+    return { saved: rows.length };
+  }
+
+  /**
+   * Полное сохранение настроек воронок (для режима V).
+   * Принимает плоскую карту { "pipeline:field": mode }; допустимы режимы S, * и B.
+   */
+  async saveFunnels(accountId: string, funnels: unknown): Promise<{ saved: number }> {
+    requireAccountId(accountId);
+    if (funnels === null || typeof funnels !== 'object') {
+      throw new BadRequestException('funnels должен быть объектом { "pipeline:field": mode }');
+    }
+
+    const rows: FunnelRow[] = [];
+    for (const [key, raw] of Object.entries(funnels as Record<string, unknown>)) {
+      const mode = String(raw) as FieldMode;
+      if (!FUNNEL_MODES.includes(mode)) continue; // только S/*/B (без O и V)
+      const sep = key.indexOf(':'); // pipeline_id числовой (без ':') → делим по первому
+      if (sep <= 0) continue;
+      const pipelineId = key.slice(0, sep);
+      const fieldId = key.slice(sep + 1);
+      if (!/^\d+$/.test(pipelineId) || !fieldId) continue;
+      rows.push({ pipeline_id: pipelineId, field_id: fieldId, mode });
+    }
+
+    await this.repo.replaceFunnels(accountId, rows);
+    await this.audit.log({
+      accountId,
+      action: 'matrix_save',
+      meta: { op: 'funnels', saved: rows.length },
+    });
     return { saved: rows.length };
   }
 }
