@@ -1,0 +1,10 @@
+# Caddy: авто-HTTPS (Let's Encrypt) + reverse-proxy на приложение.
+# DOMAIN и ACME_EMAIL приходят из окружения (docker-compose.prod.yml → .env).
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:3000
+}

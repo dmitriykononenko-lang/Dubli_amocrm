@@ -1,0 +1,53 @@
+# Прод-развёртывание Hidden Field: приложение за Caddy (авто-HTTPS, Let's Encrypt).
+# БД по умолчанию — ВНЕШНЯЯ managed PostgreSQL (DATABASE_URL в .env, DATABASE_SSL=true).
+#
+# Требуется: сервер с публичным доменом (A-запись на сервер, открыты порты 80/443).
+# Запуск:      docker compose -f docker-compose.prod.yml up -d --build
+# Bundled PG:  docker compose -f docker-compose.prod.yml --profile bundled-db up -d --build
+#              (тогда в .env: DATABASE_URL=postgres://postgres:pg@db:5432/hidden_field, DATABASE_SSL=false)
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?задайте DOMAIN в .env}
+      ACME_EMAIL: ${ACME_EMAIL:?задайте ACME_EMAIL в .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    expose:
+      - "3000"
+
+  # Опциональная встроенная БД (профиль bundled-db). Для managed PG НЕ используется.
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    profiles: ["bundled-db"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pg}
+      POSTGRES_DB: hidden_field
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - hf_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hidden_field"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  caddy_data:
+  caddy_config:
+  hf_pgdata:

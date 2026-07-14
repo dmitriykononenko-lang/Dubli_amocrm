@@ -6,3 +6,5 @@ coverage
 .git
 Dockerfile
 docker-compose.yml
+docker-compose.prod.yml
+Caddyfile

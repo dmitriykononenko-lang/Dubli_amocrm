@@ -94,6 +94,40 @@ docker compose up --build        # http://localhost:3000 ; проверка: GET
 > Схема применяется только при пустом томе БД. После правок `db/schema.sql`
 > пересоздайте БД: `docker compose down -v && docker compose up --build`.
 
+## Прод-развёртывание (Docker + Caddy)
+
+Приложение за Caddy с автоматическим HTTPS (Let's Encrypt); БД по умолчанию —
+внешняя managed PostgreSQL. Нужен сервер с публичным доменом (A-запись на сервер,
+открыты порты 80/443).
+
+1. Соберите `.env` (`bash scripts/gen-env.sh`, затем допишите прод-значения):
+   ```ini
+   DOMAIN=hf.example.com
+   ACME_EMAIL=admin@example.com
+   DATABASE_URL=postgres://user:pass@managed-pg-host:5432/hidden_field?sslmode=require
+   DATABASE_SSL=true
+   AMOCRM_REDIRECT_URI=https://hf.example.com/oauth/callback
+   # + AMOCRM_CLIENT_ID / AMOCRM_CLIENT_SECRET / TOKEN_ENC_KEY / API_SECURITY_KEY
+   ```
+2. Примените схему к managed PG (однократно, нужен `psql`):
+   ```bash
+   DATABASE_URL="$(grep -E '^DATABASE_URL=' .env | cut -d= -f2-)" bash scripts/apply-schema.sh
+   ```
+3. Запуск:
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+4. Проверка (ничего не пишет в БД):
+   ```bash
+   BASE=https://hf.example.com KEY=<API_SECURITY_KEY> ACCOUNT=<account_id> bash scripts/smoke.sh
+   ```
+
+**Postgres на том же сервере** (вместо managed): в `.env` укажите
+`DATABASE_URL=postgres://postgres:pg@db:5432/hidden_field` и `DATABASE_SSL=false`, затем
+```bash
+docker compose -f docker-compose.prod.yml --profile bundled-db up -d --build
+```
+
 ## Требования
 
 - Node.js ≥ 20 (разработка на 22).
