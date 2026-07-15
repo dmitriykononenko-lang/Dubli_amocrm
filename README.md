@@ -98,6 +98,20 @@ node test/run-tests.js
 `area` и по URL, совпадение структуры ключей `ru.json`/`en.json`, очистка
 DOM и слушателей в `destroy()`. Код выхода `0` — все проверки пройдены.
 
+## Развёртывание
+
+Полный путь «с нуля до прод» (сервер, БД, интеграция amoCRM, вебхуки, виджет) —
+в [`docs/deploy.md`](docs/deploy.md). Быстрый старт стенда (бэкенд + PostgreSQL):
+
+```bash
+cp .env.example .env    # заполнить TOKEN_ENC_KEY, AMOCRM_*, WEBHOOK_SECURITY_KEY
+docker compose up -d --build
+```
+
+Схема БД применяется автоматически при старте; наружу бэкенд отдаётся через
+nginx/TLS (`deploy/nginx.conf.example`) или как systemd-сервис
+(`deploy/dubli-backend.service.example`).
+
 ## Бэкенд (Этап 3)
 
 Серверное ядро — в `backend/` (NestJS, PostgreSQL через Kysely). Запуск, переменные

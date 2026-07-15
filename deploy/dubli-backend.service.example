@@ -1,0 +1,24 @@
+# systemd-юнит для запуска бэкенда без Docker.
+# Установка:
+#   1) склонировать репозиторий в /opt/dubli, собрать: cd /opt/dubli/backend && npm ci && npm run build
+#   2) заполнить /opt/dubli/backend/.env (см. backend/.env.example)
+#   3) cp deploy/dubli-backend.service.example /etc/systemd/system/dubli-backend.service
+#      systemctl daemon-reload && systemctl enable --now dubli-backend
+[Unit]
+Description=Dubli backend (NestJS)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dubli/backend
+EnvironmentFile=/opt/dubli/backend/.env
+# Идемпотентно применяем схему БД перед стартом.
+ExecStartPre=/usr/bin/node scripts/db-apply.mjs
+ExecStart=/usr/bin/node dist/main.js
+Restart=always
+RestartSec=3
+User=dubli
+Group=dubli
+
+[Install]
+WantedBy=multi-user.target

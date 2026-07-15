@@ -1,0 +1,47 @@
+# Dubli: бэкенд + PostgreSQL 16 одной командой.
+# Заполните ./.env (см. .env.example), затем: docker compose up -d --build
+# ВНИМАНИЕ (152-ФЗ): для прода данные должны храниться в РФ в защищённом сегменте.
+# Встроенный контейнер PostgreSQL удобен для стенда; на проде используйте
+# managed PostgreSQL (напр. Selectel «Облако ФЗ-152») — уберите сервис db и
+# задайте DATABASE_URL/DATABASE_SSL в окружении backend.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dubli}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:-dubli}
+    volumes:
+      - dubli-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dubli}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgres://${POSTGRES_USER:-dubli}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dubli}
+      DATABASE_SSL: 'false'
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:?задайте TOKEN_ENC_KEY (openssl rand -base64 32)}
+      KMS_PROVIDER: env
+      AMOCRM_CLIENT_ID: ${AMOCRM_CLIENT_ID:?}
+      AMOCRM_CLIENT_SECRET: ${AMOCRM_CLIENT_SECRET:?}
+      AMOCRM_REDIRECT_URI: ${AMOCRM_REDIRECT_URI:?}
+      WEBHOOK_SECURITY_KEY: ${WEBHOOK_SECURITY_KEY:?}
+      AMOCRM_RATE_LIMIT_RPS: '7'
+      SCAN_POLL_MS: '2000'
+    # Наружу отдаём через nginx/TLS: публикуем только на localhost хоста.
+    ports:
+      - '127.0.0.1:3000:3000'
+    restart: unless-stopped
+
+volumes:
+  dubli-pg:
