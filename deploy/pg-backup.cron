@@ -1,0 +1,6 @@
+# Ежедневный дамп БД в 03:00 с выгрузкой в S3 (диск эфемерный!).
+# Установка:  crontab -e  и добавить строку ниже (путь под ваш клон, напр. /opt/dubli):
+0 3 * * * /opt/dubli/deploy/pg-backup.sh >> /var/log/dubli-backup.log 2>&1
+
+# Проверка вручную:  /opt/dubli/deploy/pg-backup.sh
+# Восстановление:    gunzip -c dubli-YYYYMMDD-HHMMSS.sql.gz | docker compose exec -T db psql -U dubli -d dubli
