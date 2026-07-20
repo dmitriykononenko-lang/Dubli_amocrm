@@ -18,8 +18,7 @@
     "lcard-1",
     "ccard-1",
     "comcard-1",
-    "settings",
-    "advanced_settings"
+    "settings"
   ],
   "settings": {
     "backend_url": {
