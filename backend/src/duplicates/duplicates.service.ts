@@ -23,12 +23,68 @@ export interface DuplicatesResult {
   duplicates: DuplicateItem[];
 }
 
+export interface DuplicateGroupEntity {
+  amo_id: string;
+  name: string | null;
+}
+
+export interface DuplicateGroup {
+  key_type: KeyType;
+  key_norm: string;
+  entities: DuplicateGroupEntity[];
+}
+
+export interface DuplicateGroupsResult {
+  entity_type: EntityType;
+  count: number;
+  groups: DuplicateGroup[];
+}
+
 @Injectable()
 export class DuplicatesService {
   constructor(
     private readonly repo: DuplicatesRepository,
     private readonly rules: RulesRepository,
   ) {}
+
+  /**
+   * Группы дублей по сущности во всей базе аккаунта (для экрана настроек): записи,
+   * делящие один нормализованный ключ (телефон/email/ИНН/…), сгруппированные по ключу.
+   * Имена — общие (name) — исключаются, чтобы не шуметь совпадениями по частым именам.
+   */
+  async findGroups(accountId: string, entityType: EntityType): Promise<DuplicateGroupsResult> {
+    requireAccountId(accountId);
+    const rows = await this.repo.findDuplicateGroupRows(accountId, entityType);
+
+    const byKey = new Map<
+      string,
+      { key_type: KeyType; key_norm: string; entities: Map<string, DuplicateGroupEntity> }
+    >();
+    for (const r of rows) {
+      const gk = `${r.key_type}:${r.kh}`;
+      let g = byKey.get(gk);
+      if (!g) {
+        g = { key_type: r.key_type, key_norm: r.key_norm, entities: new Map() };
+        byKey.set(gk, g);
+      }
+      g.entities.set(r.amo_id, { amo_id: r.amo_id, name: extractName(r.key_fields) });
+    }
+
+    const groups: DuplicateGroup[] = [...byKey.values()]
+      .map((g) => ({
+        key_type: g.key_type,
+        key_norm: g.key_norm,
+        entities: [...g.entities.values()],
+      }))
+      .filter((g) => g.entities.length >= 2)
+      .sort(
+        (a, b) =>
+          b.entities.length - a.entities.length ||
+          a.key_norm.localeCompare(b.key_norm, undefined, { numeric: true }),
+      );
+
+    return { entity_type: entityType, count: groups.length, groups };
+  }
 
   /** Поиск дублей проиндексированной сущности по общим ключам и правилам аккаунта. */
   async findForEntity(

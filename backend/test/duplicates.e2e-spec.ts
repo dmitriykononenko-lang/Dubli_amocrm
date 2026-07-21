@@ -171,4 +171,30 @@ describeDb('Duplicates e2e (GET /api/duplicates)', () => {
       await db.deleteFrom('rules').where('id', '=', inserted.id).execute();
     }
   });
+
+  it('без amo_id → список групп дублей по сущности', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/duplicates')
+      .query({ account_id: ACCOUNT_ID, entity_type: 'contact' })
+      .set('X-Security-Key', SECURITY_KEY)
+      .expect(200);
+    // 201 и 202 делят телефон → одна группа; 203 — с другим телефоном, не в группе
+    expect(res.body.entity_type).toBe('contact');
+    const phoneGroup = res.body.groups.find(
+      (g: { key_type: string; key_norm: string }) =>
+        g.key_type === 'phone' && g.key_norm === '9991112233',
+    );
+    expect(phoneGroup).toBeTruthy();
+    expect(phoneGroup.entities.map((e: { amo_id: string }) => e.amo_id).sort()).toEqual([
+      '201',
+      '202',
+    ]);
+
+    const leads = await request(app.getHttpServer())
+      .get('/api/duplicates')
+      .query({ account_id: ACCOUNT_ID, entity_type: 'lead' })
+      .set('X-Security-Key', SECURITY_KEY)
+      .expect(200);
+    expect(leads.body).toMatchObject({ entity_type: 'lead', count: 0, groups: [] });
+  });
 });

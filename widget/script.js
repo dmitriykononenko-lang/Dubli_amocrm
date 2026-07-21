@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-06-16.5';
+    var WIDGET_BUILD = '2026-07-20.1';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -177,7 +177,17 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-scan__status_done{background:#e6f6ec;color:#1f9d57}',
         '.dub-scan__status_error{background:#fdecec;color:#e05c5c}',
         '.dub-scan__progress{color:#92989b;font-size:12px}',
-        '.dub-scan__pause,.dub-scan__resume{margin-left:auto;flex:0 0 auto;padding:4px 10px;font-size:12px}'
+        '.dub-scan__pause,.dub-scan__resume{margin-left:auto;flex:0 0 auto;padding:4px 10px;font-size:12px}',
+        /* найденные дубли (группы) */
+        '.dub-found__controls{display:flex;align-items:center;gap:8px;margin-bottom:10px}',
+        '.dub-found__controls select{padding:5px 8px;border:1px solid #d4d7da;border-radius:3px;font-size:13px}',
+        '.dub-found__group{border:1px solid #eef1f4;border-radius:4px;padding:8px 10px;margin-bottom:8px}',
+        '.dub-found__head{display:flex;align-items:center;gap:10px;margin-bottom:6px}',
+        '.dub-found__key{font-weight:bold;font-size:13px;color:#313942}',
+        '.dub-found__merge{margin-left:auto;flex:0 0 auto;padding:4px 10px;font-size:12px}',
+        '.dub-found__rec{font-size:13px;color:#313942;padding:2px 0}',
+        '.dub-found__rec-id{color:#92989b;font-size:12px}',
+        '.dub-found__empty{padding:6px 0}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -509,29 +519,34 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       }
     }
 
-    // POST {backend_url}/api/merge: master остаётся, duplicate объединяется в него и удаляется.
+    // Общее ядро слияния: POST /api/merge (master остаётся, duplicate удаляется).
+    // Переиспользуется и картой, и экраном настроек.
+    function postMerge(entityType, masterAmoId, duplicateAmoId, onDone, onFail) {
+      apiCall(
+        'POST',
+        '/api/merge',
+        {
+          entity_type: entityType,
+          master_amo_id: masterAmoId,
+          duplicate_amo_id: duplicateAmoId,
+          author_user_id: currentUserId()
+        },
+        onDone,
+        onFail
+      );
+    }
+
+    // Слияние из карточки: master остаётся, duplicate объединяется в него.
     function performMerge(masterAmoId, duplicateAmoId) {
       var entity = self._entity;
       if (!entity || !isConfigured()) {
         return;
       }
-      $.ajax({
-        url: backendBase() + '/api/merge?account_id=' + encodeURIComponent(accountId()),
-        method: 'POST',
-        contentType: 'application/json',
-        dataType: 'json',
-        data: JSON.stringify({
-          entity_type: entity.type,
-          master_amo_id: masterAmoId,
-          duplicate_amo_id: duplicateAmoId,
-          author_user_id: currentUserId()
-        }),
-        headers: { 'X-Security-Key': getSettings().security_key }
-      }).done(function () {
+      postMerge(entity.type, masterAmoId, duplicateAmoId, function () {
         closeMergeModals();
         showToast(t('card.merge_done', 'Дубль объединён'));
         renderCardWidget(); // перепроверяем дубли после объединения
-      }).fail(function () {
+      }, function () {
         showToast(t('card.merge_failed', 'Не удалось объединить'), true);
       });
     }
@@ -646,6 +661,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         section('settings.entities', 'Сущности', entities) +
         rulesSectionHtml(rules) +
         scanSectionHtml() +
+        dupsSectionHtml() +
         section('settings.prevent', 'Запрет создания дублей', prevent) +
         '<div class="dub-settings__foot">' +
           '<button type="button" class="dub__btn dub__btn_primary dub-settings__save">' +
@@ -769,6 +785,139 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         refreshScans, refreshScans);
     }
 
+    /* --------------------------- найденные дубли (группы) --------------------------- */
+
+    function keyTypeLabel(kt) {
+      switch (kt) {
+        case 'phone': return t('settings.key_phone', 'Телефон');
+        case 'email': return t('settings.key_email', 'Email');
+        case 'inn': return t('settings.key_inn', 'ИНН');
+        case 'name': return t('settings.key_name', 'Имя');
+        default: return t('settings.key_custom', 'Поле');
+      }
+    }
+
+    function dupsSectionHtml() {
+      var controls = '<div class="dub-found__controls">' +
+        '<select class="dub-found__entity">' + entityOptionsHtml() + '</select>' +
+        '<button type="button" class="dub__btn dub__btn_primary dub-found__show">' +
+          escapeHtml(t('settings.found_show', 'Показать')) + '</button>' +
+        '</div>';
+      return section('settings.found_title', 'Найденные дубли',
+        '<div class="dub-settings__hint">' +
+          escapeHtml(t('settings.found_hint',
+            'Показать группы дублей по сущности (после сканирования) и объединить.')) +
+        '</div>' + controls + '<div class="dub-found__list"></div>');
+    }
+
+    function dupGroupHtml(group, idx) {
+      var records = (group.entities || []).map(function (e) {
+        var name = e.name || ('#' + e.amo_id);
+        return '<div class="dub-found__rec"><span class="dub-found__rec-name">' +
+          escapeHtml(name) + '</span> <span class="dub-found__rec-id">#' +
+          escapeHtml(e.amo_id) + '</span></div>';
+      }).join('');
+      var head = escapeHtml(keyTypeLabel(group.key_type)) + ': ' + escapeHtml(group.key_norm) +
+        ' (' + (group.entities || []).length + ')';
+      return '<div class="dub-found__group" data-idx="' + idx + '">' +
+        '<div class="dub-found__head">' +
+          '<span class="dub-found__key">' + head + '</span>' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-found__merge" data-idx="' +
+            idx + '">' + escapeHtml(t('settings.found_merge', 'Объединить')) + '</button>' +
+        '</div>' + records + '</div>';
+    }
+
+    function renderDupGroups(groups) {
+      var $list = $('.dub-found__list');
+      if (!$list.length) return;
+      if (!groups.length) {
+        $list.html('<div class="dub-found__empty dub-settings__placeholder">' +
+          escapeHtml(t('settings.found_empty', 'Дублей не найдено. Запустите сканирование выше.')) +
+          '</div>');
+        return;
+      }
+      $list.html(groups.map(dupGroupHtml).join(''));
+    }
+
+    // Загрузка групп дублей по выбранной сущности: GET /api/duplicates?entity_type=… (без amo_id).
+    function loadDupGroups() {
+      var entityType = $('.dub-found__entity').val() || 'contact';
+      self._foundEntity = entityType;
+      $('.dub-found__list').html('<div class="dub-settings__placeholder">' +
+        escapeHtml(t('common.loading', 'Загрузка…')) + '</div>');
+      apiCall('GET', '/api/duplicates?entity_type=' + encodeURIComponent(entityType), null,
+        function (resp) {
+          var groups = (resp && resp.groups) || [];
+          self._foundGroups = groups;
+          renderDupGroups(groups);
+        }, function () {
+          $('.dub-found__list').html('<div class="dub-settings__placeholder dub-settings__status_error">' +
+            escapeHtml(t('settings.load_failed', 'Не удалось загрузить настройки')) + '</div>');
+        });
+    }
+
+    // Модалка выбора главной записи для группы.
+    function confirmGroupMerge(idx) {
+      var group = (self._foundGroups || [])[idx];
+      if (!group || !(group.entities || []).length) return;
+      self._gmerge = { entityType: self._foundEntity, records: group.entities.slice() };
+      var opts = group.entities.map(function (e, i) {
+        var name = e.name || ('#' + e.amo_id);
+        return '<label class="dub-confirm__opt">' +
+          '<input type="radio" name="dub-gmaster" class="dub-gmerge__master" value="' +
+            escapeHtml(e.amo_id) + '"' + (i === 0 ? ' checked' : '') + '> #' +
+            escapeHtml(e.amo_id) + ' — ' + escapeHtml(name) + '</label>';
+      }).join('');
+      var html = '<div class="dub-modal__title">' + escapeHtml(t('card.merge', 'Объединить')) + '</div>' +
+        '<div class="dub-confirm__text">' +
+          escapeHtml(t('settings.pick_master',
+            'Выберите главную запись — остальные объединятся в неё (можно откатить).')) +
+        '</div>' +
+        '<div class="dub-confirm__opts">' + opts + '</div>' +
+        '<div class="dub__actions dub-confirm__actions">' +
+          '<button type="button" class="dub__btn dub-gmerge__cancel">' +
+            escapeHtml(t('common.cancel', 'Отмена')) + '</button>' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-gmerge__ok">' +
+            escapeHtml(t('card.merge', 'Объединить')) + '</button>' +
+        '</div>';
+      self._gConfirmModal = openYpModal('dub-confirm-modal', html);
+    }
+
+    function closeGroupConfirm() {
+      if (self._gConfirmModal) {
+        closeYpModal(self._gConfirmModal);
+        self._gConfirmModal = null;
+      }
+    }
+
+    // Последовательное слияние всех дублей группы в выбранную главную запись.
+    function mergeSequence(entityType, master, dups, onAllDone) {
+      if (!dups.length) {
+        onAllDone();
+        return;
+      }
+      postMerge(entityType, master, dups[0], function () {
+        mergeSequence(entityType, master, dups.slice(1), onAllDone);
+      }, function () {
+        settingsStatus(t('settings.merge_failed', 'Не удалось объединить'), true);
+      });
+    }
+
+    function submitGroupMerge() {
+      var g = self._gmerge;
+      if (!g || !isConfigured()) return;
+      var master = String($('.dub-gmerge__master:checked').val() ||
+        (g.records[0] && g.records[0].amo_id) || '');
+      var dups = g.records.map(function (r) { return String(r.amo_id); })
+        .filter(function (id) { return id !== master; });
+      if (!master || !dups.length) return;
+      mergeSequence(g.entityType, master, dups, function () {
+        closeGroupConfirm();
+        settingsStatus(t('settings.merge_done', 'Дубли объединены'), false);
+        loadDupGroups(); // перезагрузить группы после слияния
+      });
+    }
+
     // Рендерит панель настроек: грузит настройки и правила с бэкенда и строит форму.
     function renderSettings($container) {
       injectStyles();
@@ -813,7 +962,14 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         .on('change.dubset', '.dub-rule__enabled', toggleRule)
         .on('click.dubset', '.dub-scan__start', startScan)
         .on('click.dubset', '.dub-scan__pause', pauseScan)
-        .on('click.dubset', '.dub-scan__resume', resumeScan);
+        .on('click.dubset', '.dub-scan__resume', resumeScan)
+        // найденные дубли: показать группы, объединить группу
+        .on('click.dubset', '.dub-found__show', loadDupGroups)
+        .on('click.dubset', '.dub-found__merge', function () {
+          confirmGroupMerge(Number($(this).attr('data-idx')));
+        })
+        .on('click.dubset', '.dub-gmerge__ok', submitGroupMerge)
+        .on('click.dubset', '.dub-gmerge__cancel', closeGroupConfirm);
     }
 
     function saveSettings() {
@@ -937,6 +1093,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         $(document).off('click.dub').off('click.dubset change.dubset');
         stopScanPolling();
         closeMergeModals();
+        closeGroupConfirm();
         $('.dub-toast').remove();
       },
 

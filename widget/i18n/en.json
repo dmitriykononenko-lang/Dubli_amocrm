@@ -63,7 +63,16 @@
     "scan_status_running": "Running",
     "scan_status_paused": "Paused",
     "scan_status_done": "Done",
-    "scan_status_error": "Error"
+    "scan_status_error": "Error",
+    "found_title": "Found duplicates",
+    "found_hint": "Show duplicate groups for the entity (after a scan) and merge them.",
+    "found_show": "Show",
+    "found_empty": "No duplicates found. Run a scan above.",
+    "found_merge": "Merge",
+    "key_custom": "Field",
+    "pick_master": "Choose the record to keep — the rest merge into it (can be rolled back).",
+    "merge_done": "Duplicates merged",
+    "merge_failed": "Merge failed"
   },
   "common": {
     "save": "Save",

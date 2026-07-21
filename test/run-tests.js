@@ -600,6 +600,57 @@ section('Экран настроек: массовая чистка (запус�
   $modalBody.remove();
 }
 
+section('Экран настроек: найденные дубли (показать группы + объединить)');
+{
+  resetEnv();
+  let merged = 0;
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/scan/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/duplicates/.test(opts.url) && opts.method === 'GET') {
+      return { response: merged
+        ? { entity_type: 'contact', count: 0, groups: [] }
+        : { entity_type: 'contact', count: 1, groups: [
+            { key_type: 'phone', key_norm: '999', entities: [{ amo_id: '501', name: 'Иван' }, { amo_id: '502', name: 'Пётр' }] }
+          ] } };
+    }
+    if (/\/api\/merge/.test(opts.url) && opts.method === 'POST') { merged++; return { response: { mergeId: String(merged) } }; }
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $modalBody = settingsBody();
+  widget.callbacks.settings($modalBody);
+
+  assert($modalBody.find('.dub-found__show').length === 1, 'есть кнопка «Показать»');
+
+  // показать группы
+  $modalBody.find('.dub-found__entity').val('contact');
+  $modalBody.find('.dub-found__show').trigger('click');
+  assert(ajaxCalls.some((c) => c.method === 'GET' && /\/api\/duplicates\?entity_type=contact/.test(c.url)),
+    'запрошен GET /api/duplicates?entity_type=contact');
+  assert($modalBody.find('.dub-found__group').length === 1, 'отрисована одна группа');
+  assert($modalBody.find('.dub-found__group .dub-found__rec').length === 2, 'в группе две записи');
+
+  // объединить группу → выбор главной записи
+  $modalBody.find('.dub-found__merge').trigger('click');
+  assert($('.dub-gmerge__ok').length === 1, 'показан выбор главной записи');
+  assert($('.dub-gmerge__master').length === 2, 'предложены обе записи');
+
+  // подтвердить (по умолчанию главная — 501) → POST /api/merge 502 → 501
+  $('.dub-gmerge__ok').trigger('click');
+  const posts = ajaxCalls.filter((c) => c.method === 'POST' && /\/api\/merge/.test(c.url));
+  assert(posts.length === 1, 'одно объединение для группы из двух записей');
+  const body = JSON.parse(posts[0].data || '{}');
+  assert(body.entity_type === 'contact' && String(body.master_amo_id) === '501' && String(body.duplicate_amo_id) === '502',
+    'слияние 502 → 501 (главная по умолчанию — первая)');
+  assert($('.dub-gmerge__ok').length === 0, 'после слияния модалка закрыта');
+  assert($modalBody.find('.dub-found__group').length === 0, 'после слияния группа исчезла (перезагрузка)');
+
+  widget.callbacks.destroy();
+  $modalBody.remove();
+}
+
 /* 5. destroy() очищает добавленный DOM и слушатели */
 section('destroy() очищает DOM и слушатели');
 {
