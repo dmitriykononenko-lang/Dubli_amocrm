@@ -1,5 +1,20 @@
 import { z } from 'zod';
 
+/**
+ * Булев флаг из окружения. `z.coerce.boolean()` использовать НЕЛЬЗЯ: он приводит через
+ * `Boolean(v)`, где любая непустая строка (в т.ч. "false", "0") даёт true — так DATABASE_SSL=false
+ * молча включал бы TLS. Здесь строки разбираются по значению; настоящие boolean пропускаются как есть.
+ */
+const envBool = z.preprocess((v) => {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (['false', '0', 'no', 'off', ''].includes(s)) return false;
+    if (['true', '1', 'yes', 'on'].includes(s)) return true;
+  }
+  return v; // прочее — отдать z.boolean(), пусть падает с понятной ошибкой
+}, z.boolean());
+
 /** Схема переменных окружения. Приложение не стартует при невалидной конфигурации. */
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -7,7 +22,7 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'verbose', 'debug', 'log', 'warn', 'error', 'fatal']).default('log'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL обязателен'),
-  DATABASE_SSL: z.coerce.boolean().default(true),
+  DATABASE_SSL: envBool.default(true),
 
   // Мастер-ключ AES-256-GCM: ровно 32 байта в base64.
   TOKEN_ENC_KEY: z.string().refine((v) => {
