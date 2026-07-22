@@ -27,6 +27,7 @@
   "settings": {
     "backend_url": "Backend URL",
     "security_key": "Security key",
+    "phone": "Your contact phone",
     "entities": "Entities",
     "contacts": "Contacts",
     "companies": "Companies",

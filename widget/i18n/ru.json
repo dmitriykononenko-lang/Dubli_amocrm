@@ -27,6 +27,7 @@
   "settings": {
     "backend_url": "URL бэкенда",
     "security_key": "Ключ безопасности",
+    "phone": "Ваш телефон для связи",
     "entities": "Сущности",
     "contacts": "Контакты",
     "companies": "Компании",

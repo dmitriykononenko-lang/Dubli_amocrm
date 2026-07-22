@@ -192,6 +192,31 @@ describe('BillingService — этапы воронки по названию', (
   });
 });
 
+describe('BillingService.saveContact', () => {
+  it('пишет контакт в сделку клиента и запоминает телефон', async () => {
+    const { svc, amocrm, accounts } = make(
+      { vendorAmocrmSubdomain: 'koagency.amocrm.ru', vendorAmocrmToken: 't' },
+      { vendor_lead_id: '55501' },
+    );
+    await svc.saveContact('778', { phone: '+79990001122', email: 'c@x.ru' });
+    const note = (amocrm.addNote as jest.Mock).mock.calls.find((c) => /Контакт клиента/.test(c[3]));
+    expect(note[3]).toContain('+79990001122');
+    expect(accounts.updateSettings).toHaveBeenCalledWith(
+      '778',
+      expect.objectContaining({ contact_phone: '+79990001122' }),
+    );
+  });
+
+  it('не дублирует примечание при том же телефоне', async () => {
+    const { svc, amocrm } = make(
+      { vendorAmocrmSubdomain: 'koagency.amocrm.ru', vendorAmocrmToken: 't' },
+      { vendor_lead_id: '55501', contact_phone: '+79990001122' },
+    );
+    await svc.saveContact('778', { phone: '+79990001122' });
+    expect(amocrm.addNote).not.toHaveBeenCalled();
+  });
+});
+
 describe('BillingService.createCheckout', () => {
   it('503, пока ЮKassa не настроена', async () => {
     const { svc } = make();

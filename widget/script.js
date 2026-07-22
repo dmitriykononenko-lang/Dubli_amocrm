@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.8';
+    var WIDGET_BUILD = '2026-07-22.9';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -1259,6 +1259,15 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       });
     }
 
+    // Контакт клиента (телефон из настроек + email) → бэкенд, чтобы у Ko:agency был
+    // номер сразу после установки/сохранения. Best-effort, не мешает сохранению.
+    function saveContact() {
+      var phone = String(getSettings().phone || '').trim();
+      if (!phone) return;
+      apiCall('POST', '/api/billing/contact', { phone: phone, email: currentUserEmail() },
+        function () {}, function () {});
+    }
+
     function addRule() {
       var $p = $('.dub-settings');
       var name = String($p.find('.dub-rule__newname').val() || '').trim();
@@ -1434,7 +1443,9 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       onSave: function () {
-        // Родная кнопка «Сохранить» amoCRM сохраняет и наши настройки тоже.
+        // Родная кнопка «Сохранить» amoCRM: сохраняем наши настройки и шлём контакт
+        // (телефон), чтобы у Ko:agency сразу был номер клиента.
+        try { saveContact(); } catch (e) { /* не мешаем сохранению amoCRM */ }
         if ($('.dub-settings').length) {
           try { saveSettings(); } catch (e) { /* не мешаем сохранению amoCRM */ }
         }

@@ -106,6 +106,38 @@ export class BillingService {
   }
 
   /**
+   * Контакт клиента (телефон/email из виджета) — пишем в сделку клиента в нашей amoCRM
+   * сразу после установки/сохранения. Идемпотентно: примечание только при смене телефона.
+   */
+  async saveContact(
+    clientAccountId: string,
+    contact: { phone?: string; email?: string },
+  ): Promise<{ ok: true }> {
+    const phone = (contact.phone ?? '').trim();
+    const email = (contact.email ?? '').trim();
+    if (!phone && !email) return { ok: true };
+
+    const settings = await this.accounts.getSettings(clientAccountId);
+    if (settings.contact_phone === phone) return { ok: true };
+
+    const vendorId = await this.resolveVendorAccountId();
+    if (vendorId) {
+      const dealId = await this.ensureClientDeal(clientAccountId);
+      if (dealId) {
+        const line = [phone && `тел: ${phone}`, email && `email: ${email}`]
+          .filter(Boolean)
+          .join(' · ');
+        await this.best(
+          () => this.amocrm.addNote(vendorId, 'lead', dealId, `Контакт клиента: ${line}`),
+          'addNote(contact)',
+        );
+      }
+    }
+    await this.accounts.updateSettings(clientAccountId, { ...settings, contact_phone: phone });
+    return { ok: true };
+  }
+
+  /**
    * Онлайн-оплата через ЮKassa. Пока ключи магазина не заданы — 503 с понятным
    * сообщением. Полная реализация (Create Payment → confirmation_url + webhook) — далее.
    */

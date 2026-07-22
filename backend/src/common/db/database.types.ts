@@ -40,6 +40,8 @@ export interface AccountSettings {
   vendor_lead_id?: string;
   /** Подписка оплачена до (ISO). Пусто/в прошлом → демо-режим. */
   paid_until?: string;
+  /** Телефон клиента (из настроек виджета) — чтобы не дублировать примечание при пересохранении. */
+  contact_phone?: string;
   [k: string]: unknown;
 }
 

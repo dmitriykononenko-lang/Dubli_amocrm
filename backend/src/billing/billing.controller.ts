@@ -34,6 +34,11 @@ export class BillingController {
     });
   }
 
+  @Post('contact')
+  contact(@AccountId() accountId: string, @Body() body: CheckoutBody) {
+    return this.billing.saveContact(accountId, { phone: body?.phone, email: body?.email });
+  }
+
   @Post('checkout')
   checkout(@AccountId() accountId: string, @Body() body: CheckoutBody) {
     return this.billing.createCheckout(
