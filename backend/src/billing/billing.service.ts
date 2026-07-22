@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
-import { AmocrmService } from '../amocrm/amocrm.service';
+import { AmocrmService, VENDOR_ACCOUNT_KEY } from '../amocrm/amocrm.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { computeQuote, type Quote } from './billing.pricing';
 import { YookassaClient } from './yookassa.client';
@@ -269,6 +269,8 @@ export class BillingService {
   }
 
   private async resolveVendorAccountId(): Promise<string | null> {
+    // Долгосрочный токен → работаем через vendor-ключ, БД/установка не нужны.
+    if (this.config.vendorAmocrmToken && this.config.vendorAmocrmSubdomain) return VENDOR_ACCOUNT_KEY;
     const byId = this.config.vendorAmocrmAccountId;
     if (byId) return byId;
     const sub = this.config.vendorAmocrmSubdomain;

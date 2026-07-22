@@ -57,6 +57,9 @@ export const envSchema = z.object({
   // Аккаунт amoCRM Ko:agency, куда падают счёт-сделки. Достаточно указать один из:
   VENDOR_AMOCRM_ACCOUNT_ID: z.string().optional(),
   VENDOR_AMOCRM_SUBDOMAIN: z.string().optional(),
+  // Долгосрочный токен доступа vendor-аккаунта (надёжнее OAuth: не зависит от
+  // переустановки виджета). Задаётся вместе с VENDOR_AMOCRM_SUBDOMAIN.
+  VENDOR_AMOCRM_TOKEN: z.string().optional(),
   // Выделенная воронка «Дубли — клиенты» и её этапы (необязательно; без них — сделка
   // создаётся в главной воронке без переходов по этапам, но примечания/задачи пишутся).
   VENDOR_AMOCRM_PIPELINE_ID: emptyable(z.coerce.number().int().positive().optional()),

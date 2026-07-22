@@ -65,6 +65,9 @@ export class AppConfigService {
   get vendorAmocrmSubdomain(): string | undefined {
     return this.get('VENDOR_AMOCRM_SUBDOMAIN');
   }
+  get vendorAmocrmToken(): string | undefined {
+    return this.get('VENDOR_AMOCRM_TOKEN');
+  }
   get vendorAmocrmPipelineId(): number | undefined {
     return this.get('VENDOR_AMOCRM_PIPELINE_ID');
   }

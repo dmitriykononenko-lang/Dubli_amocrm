@@ -2,9 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AmocrmHttpClient } from './amocrm-http.client';
 import { TokensService } from '../tokens/tokens.service';
 import { AccountsService } from '../accounts/accounts.service';
+import { AppConfigService } from '../config/app-config.service';
 import { toPlural } from '../common/entity-type.util';
 import type { EntityType } from '../common/db/database.types';
 import type { RawAmoEntity } from '../entities/field-extractor';
+
+/**
+ * Ключ vendor-аккаунта для операций биллинга через ДОЛГОСРОЧНЫЙ токен (env),
+ * без OAuth/установки. amocrm.service.ctx распознаёт его и берёт subdomain+token из конфига.
+ */
+export const VENDOR_ACCOUNT_KEY = 'vendor';
 
 /** Связь сущности amoCRM (для переноса при объединении). */
 export interface AmoLink {
@@ -32,6 +39,7 @@ export class AmocrmService {
     private readonly http: AmocrmHttpClient,
     private readonly tokens: TokensService,
     private readonly accounts: AccountsService,
+    private readonly config: AppConfigService,
   ) {}
 
   async getById<T = unknown>(accountId: string, entityType: EntityType, amoId: string): Promise<T> {
@@ -179,9 +187,22 @@ export class AmocrmService {
 
   /** Резолв subdomain + валидного access-токена для аккаунта. */
   private async ctx(accountId: string): Promise<{ subdomain: string; accessToken: string }> {
+    // Vendor-аккаунт по долгосрочному токену (биллинг) — без OAuth и без записи в БД.
+    const va = this.vendorAuth();
+    if (va && (accountId === VENDOR_ACCOUNT_KEY || accountId === this.config.vendorAmocrmAccountId)) {
+      return va;
+    }
     const account = await this.accounts.findById(accountId);
     if (!account) throw new NotFoundException('Аккаунт не найден');
     const accessToken = await this.tokens.getValidAccessToken(accountId);
     return { subdomain: account.subdomain, accessToken };
+  }
+
+  /** subdomain + долгосрочный токен vendor-аккаунта из конфига, либо null. */
+  private vendorAuth(): { subdomain: string; accessToken: string } | null {
+    const token = this.config.vendorAmocrmToken;
+    const sub = this.config.vendorAmocrmSubdomain;
+    if (token && sub) return { subdomain: sub.split('.')[0], accessToken: token };
+    return null;
   }
 }

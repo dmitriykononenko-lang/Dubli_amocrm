@@ -6,7 +6,8 @@ describe('AmocrmService.listPage', () => {
     const http = { apiGet };
     const tokens = { getValidAccessToken: jest.fn(async () => 'AT') };
     const accounts = { findById: jest.fn(async () => ({ account_id: '1', subdomain: 'demo' })) };
-    return new AmocrmService(http as never, tokens as never, accounts as never);
+    const config = { vendorAmocrmToken: undefined, vendorAmocrmSubdomain: undefined, vendorAmocrmAccountId: undefined };
+    return new AmocrmService(http as never, tokens as never, accounts as never, config as never);
   }
 
   it('первая страница: запрос с limit, парсинг _embedded и _links.next в курсор', async () => {

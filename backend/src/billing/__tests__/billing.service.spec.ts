@@ -78,6 +78,15 @@ describe('BillingService — установка клиента', () => {
     (amocrm.create as jest.Mock).mockRejectedValue(new Error('amo down'));
     await expect(svc.onClientInstalled('778')).resolves.toBeUndefined();
   });
+
+  it('с долгосрочным токеном работает через vendor-ключ (без БД/установки)', async () => {
+    const { svc, amocrm } = make({
+      vendorAmocrmToken: 'longlived',
+      vendorAmocrmSubdomain: 'koagency.amocrm.ru',
+    });
+    await svc.onClientInstalled('778');
+    expect(amocrm.create).toHaveBeenCalledWith('vendor', 'lead', expect.any(Object));
+  });
 });
 
 describe('BillingService.requestInvoice', () => {
