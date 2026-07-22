@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.5';
+    var WIDGET_BUILD = '2026-07-22.6';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -242,10 +242,11 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         /* вкладка «Оплата» */
         '.dub-pay__status{font-size:13px;font-weight:600;color:#8a919a;margin-bottom:6px}',
         '.dub-pay__status_ok{color:#1f9d57}',
-        '.dub-pay__rate{font-size:13px;color:#26313e;margin-bottom:14px}',
+        '.dub-pay__rate{font-size:13px;color:#98a0a8;flex:0 0 auto}',
+        '.dub-pay__line{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:#26313e;margin-bottom:16px;flex-wrap:wrap}',
         '.dub-pay__row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}',
         '.dub-pay__label{font-size:14px;color:#26313e}',
-        '.dub-pay__users{width:110px;padding:8px 10px;border:1px solid #d4d7da;border-radius:6px;font-size:14px;text-align:center;box-sizing:border-box}',
+        '.dub-pay__users{width:64px;padding:6px 8px;border:1px solid #d4d7da;border-radius:6px;font-size:14px;text-align:center;box-sizing:border-box;display:inline-block;vertical-align:middle;margin:0 4px}',
         '.dub-pay__plans{display:flex;gap:12px;margin-bottom:6px;flex-wrap:wrap}',
         '.dub-plan{flex:1 1 160px;min-width:150px;border:2px solid #e7e9ec;border-radius:10px;padding:14px;cursor:pointer;text-align:center;display:flex;flex-direction:column;gap:4px;position:relative}',
         '.dub-plan:hover{border-color:#cfd4da}',
@@ -256,7 +257,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-plan__sum{font-size:14px;color:#26313e;margin-top:2px}',
         '.dub-pay__total{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid #f0f1f3;margin-top:8px;margin-bottom:14px}',
         '.dub-pay__total b{font-size:22px;color:#26313e}',
-        '.dub-pay__actions{display:flex;gap:12px;flex-wrap:wrap}',
+        '.dub-pay__actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}',
+        '.dub-pay__actions .dub-pay__sum{font-size:20px;font-weight:700;color:#26313e;margin-right:auto}',
         '.dub-pay__actions .dub__btn{flex:0 0 auto;padding:10px 24px;font-weight:600}'
       ].join('');
       var styleEl = document.createElement('style');
@@ -632,6 +634,20 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     ];
 
     // Запрос к API бэкенда: account_id в query, ключ в заголовке.
+    // Человекочитаемая ошибка из ответа бэкенда ({statusCode, error} — error строка или объект).
+    function apiErrText(xhr, fallback) {
+      try {
+        var j = (xhr && (xhr.responseJSON || (xhr.responseText ? JSON.parse(xhr.responseText) : null))) || null;
+        if (j) {
+          var e = j.error;
+          if (e && typeof e === 'object') return e.message || e.error || fallback;
+          if (typeof e === 'string') return e;
+          if (j.message) return j.message;
+        }
+      } catch (ignore) { /* нераспарсили — отдадим fallback */ }
+      return (xhr && xhr.status ? '[' + xhr.status + '] ' : '') + fallback;
+    }
+
     function apiCall(method, path, body, onDone, onFail) {
       var sep = path.indexOf('?') >= 0 ? '&' : '?';
       $.ajax({
@@ -827,22 +843,20 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         : escapeHtml(t('settings.pay_status_demo', 'Демо-режим — доступно ограниченное объединение'));
       return '<div class="dub-card">' +
         '<div class="dub-pay__status' + (paid ? ' dub-pay__status_ok' : '') + '">' + statusLine + '</div>' +
-        '<div class="dub-card__hint">' + escapeHtml(t('settings.pay_hint',
-          'Подписка за пользователя amoCRM. Оплатите онлайн или запросите счёт.')) + '</div>' +
-        '<div class="dub-pay__rate">' + BILLING.pricePerUser + ' ₽ ' +
-          escapeHtml(t('settings.pay_rate', 'за пользователя в месяц')) + ' · ' +
-          escapeHtml(t('settings.pay_min', 'минимум')) + ' ' + BILLING.minUsers + '</div>' +
-        '<div class="dub-pay__row"><span class="dub-pay__label">' +
-          escapeHtml(t('settings.pay_users', 'Число пользователей')) + '</span>' +
-          '<input type="number" class="dub-pay__users" min="' + BILLING.minUsers + '" value="' + calc.users + '"></div>' +
+        '<div class="dub-pay__line">' +
+          '<span>' + escapeHtml(t('settings.pay_for', 'За')) +
+            ' <input type="number" class="dub-pay__users" min="' + BILLING.minUsers + '" value="' + calc.users + '"> ' +
+            escapeHtml(t('settings.pay_users_word', 'пользователей amoCRM')) + '</span>' +
+          '<span class="dub-pay__rate">' + BILLING.pricePerUser + ' ' +
+            escapeHtml(t('settings.pay_per_month', '₽/мес')) + '</span>' +
+        '</div>' +
         '<div class="dub-pay__plans">' + payPlanCardsHtml(calc.users, activeId) + '</div>' +
-        '<div class="dub-pay__total"><span>' + escapeHtml(t('settings.pay_sum', 'Сумма')) +
-          '</span><b class="dub-pay__sum">' + fmtMoney(calc.sum) + '</b></div>' +
         '<div class="dub-pay__row"><span class="dub-pay__label">' +
           escapeHtml(t('settings.pay_email', 'Email для чека')) + '</span>' +
           '<input type="email" class="dub-pay__email" placeholder="you@example.com" value="' +
           escapeHtml(currentUserEmail()) + '"></div>' +
         '<div class="dub-pay__actions">' +
+          '<b class="dub-pay__sum">' + fmtMoney(calc.sum) + '</b>' +
           '<button type="button" class="dub__btn dub__btn_primary dub-pay__online">' +
             escapeHtml(t('settings.pay_online', 'Оплатить онлайн')) + '</button>' +
           '<button type="button" class="dub__btn dub-pay__invoice">' +
@@ -1328,7 +1342,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         function (resp) {
           if (resp && resp.confirmation_url) { window.location.href = resp.confirmation_url; }
           else { showToast(t('settings.pay_soon', 'Онлайн-оплата скоро будет доступна')); }
-        }, function () { showToast(t('settings.pay_soon', 'Онлайн-оплата скоро будет доступна'), true); });
+        }, function (xhr) { showToast(apiErrText(xhr, t('settings.pay_failed', 'Не удалось отправить запрос')), true); });
     }
 
     // Запрос счёта: бэкенд создаёт сделку в нашей amoCRM для выставления счёта.
@@ -1338,7 +1352,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var calc = calcPaySum($root.find('.dub-pay__users').val(), planId);
       apiCall('POST', '/api/billing/invoice-request', { users: calc.users, months: calc.plan.months },
         function () { showToast(t('settings.pay_invoice_sent', 'Счёт запрошен — менеджер свяжется с вами')); },
-        function () { showToast(t('settings.pay_failed', 'Не удалось отправить запрос'), true); });
+        function (xhr) { showToast(apiErrText(xhr, t('settings.pay_failed', 'Не удалось отправить запрос')), true); });
     }
 
     // Тумблер авто-объединения правила (PATCH /api/rules/:id { auto_merge }).

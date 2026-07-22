@@ -104,7 +104,10 @@
     "pay_soon": "Онлайн-оплата скоро будет доступна",
     "pay_failed": "Не удалось отправить запрос",
     "pay_email": "Email для чека",
-    "pay_email_required": "Укажите корректный email для чека"
+    "pay_email_required": "Укажите корректный email для чека",
+    "pay_for": "За",
+    "pay_users_word": "пользователей amoCRM",
+    "pay_per_month": "₽/мес"
   },
   "advanced": {
     "title": "Дубли: чистка и объединение"

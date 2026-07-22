@@ -104,7 +104,10 @@
     "pay_soon": "Online payment coming soon",
     "pay_failed": "Couldn't send the request",
     "pay_email": "Email for the receipt",
-    "pay_email_required": "Enter a valid email for the receipt"
+    "pay_email_required": "Enter a valid email for the receipt",
+    "pay_for": "For",
+    "pay_users_word": "amoCRM users",
+    "pay_per_month": "₽/mo"
   },
   "advanced": {
     "title": "Duplicates: cleanup & merge"
