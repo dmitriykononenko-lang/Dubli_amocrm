@@ -480,7 +480,7 @@ section('Экран настроек: загрузка настроек и пр�
   $modalBody.remove();
 }
 
-section('Экран настроек: сохранение (PUT /api/settings)');
+section('Экран настроек: авто-сохранение при переключении (PUT /api/settings)');
 {
   resetEnv();
   ajaxHandler = (opts) => {
@@ -491,16 +491,22 @@ section('Экран настроек: сохранение (PUT /api/settings)')
   const widget = makeWidget('settings');
   const $modalBody = settingsBody();
   widget.callbacks.settings($modalBody);
+  // отдельной кнопки «Сохранить» больше нет — сохраняется на изменении тумблера
+  assert($modalBody.find('.dub-settings__save').length === 0, 'нашей кнопки «Сохранить» нет (одна — родная amoCRM)');
   $modalBody.find('.dub-ent[data-ent="lead"]').prop('checked', false);
-  $modalBody.find('.dub-prevent').prop('checked', true);
-  $modalBody.find('.dub-settings__save').trigger('click');
+  $modalBody.find('.dub-prevent').prop('checked', true).trigger('change');
   const put = ajaxCalls.find((c) => c.method === 'PUT' && /\/api\/settings/.test(c.url));
-  assert(!!put, 'выполнен PUT /api/settings');
+  assert(!!put, 'авто-сохранение: выполнен PUT /api/settings');
   const body = JSON.parse((put && put.data) || '{}');
   assert(body.entities.lead === false && body.prevent_create === true, 'тело отражает изменения формы');
   assert(/account_id=777/.test((put && put.url) || ''), 'account_id в query');
   assert(put.headers && put.headers['X-Security-Key'] === 'k', 'передан X-Security-Key');
   assert($modalBody.find('.dub-settings__status').text() !== '', 'показан статус сохранения');
+
+  // onSave (родная кнопка amoCRM) тоже сохраняет наши настройки
+  ajaxCalls = [];
+  widget.callbacks.onSave();
+  assert(ajaxCalls.some((c) => c.method === 'PUT' && /\/api\/settings/.test(c.url)), 'onSave сохраняет наши настройки');
   $modalBody.remove();
 }
 

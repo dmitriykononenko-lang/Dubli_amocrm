@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.7';
+    var WIDGET_BUILD = '2026-07-22.8';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -364,8 +364,11 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       }
     }
 
+    // URL бэкенда всегда наш — зашит в код (поля в настройках нет). Значение из
+    // настроек, если вдруг задано, имеет приоритет (для стенда/отладки).
+    var DEFAULT_BACKEND = 'https://dubli.koagency.ru';
     function backendBase() {
-      return String(getSettings().backend_url || '').replace(/\/+$/, '');
+      return String(getSettings().backend_url || DEFAULT_BACKEND).replace(/\/+$/, '');
     }
 
     // Проверять дубли можно, только когда заданы URL бэкенда, ключ и известен account_id.
@@ -872,12 +875,12 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     function settingsHtml(dedup, rules) {
       var ent = dedup.entities || {};
 
+      // Одна кнопка «Сохранить» — родная amoCRM внизу. Наши настройки (сущности,
+      // предупреждение) сохраняются автоматически при переключении + на onSave.
       var head = '<div class="dub-ko__head">' +
         '<div class="dub-ko__brand">Ko:agency <span>· ' +
           escapeHtml(t('widget.short_description', 'Поиск и объединение дублей')) + '</span></div>' +
-        '<div class="dub-ko__act"><span class="dub-settings__status"></span>' +
-          '<button type="button" class="dub__btn dub__btn_primary dub-settings__save">' +
-            escapeHtml(t('common.save', 'Сохранить')) + '</button></div>' +
+        '<div class="dub-ko__act"><span class="dub-settings__status"></span></div>' +
         '</div>';
 
       var tabs = '<div class="dub-tabs">' +
@@ -1222,7 +1225,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         .on('change.dubset', '.dub-pay__users, .dub-pay__plan', recalcPay)
         .on('click.dubset', '.dub-pay__online', payOnline)
         .on('click.dubset', '.dub-pay__invoice', payInvoice)
-        .on('click.dubset', '.dub-settings__save', saveSettings)
+        // авто-сохранение настроек (сущности/предупреждение) при переключении
+        .on('change.dubset', '.dub-ent, .dub-prevent', saveSettings)
         .on('click.dubset', '.dub-rule__add', addRule)
         .on('click.dubset', '.dub-rule__del', deleteRule)
         .on('change.dubset', '.dub-rule__enabled', toggleRule)
@@ -1430,6 +1434,10 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       onSave: function () {
+        // Родная кнопка «Сохранить» amoCRM сохраняет и наши настройки тоже.
+        if ($('.dub-settings').length) {
+          try { saveSettings(); } catch (e) { /* не мешаем сохранению amoCRM */ }
+        }
         return true;
       },
 

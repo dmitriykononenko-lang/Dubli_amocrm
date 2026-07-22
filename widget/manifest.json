@@ -3,7 +3,7 @@
     "name": "widget.name",
     "description": "widget.description",
     "short_description": "widget.short_description",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "interface_version": 2,
     "init_once": false,
     "locale": [
@@ -22,14 +22,9 @@
     "advanced_settings"
   ],
   "settings": {
-    "backend_url": {
-      "name": "settings.backend_url",
-      "type": "text",
-      "required": false
-    },
     "security_key": {
       "name": "settings.security_key",
-      "type": "text",
+      "type": "pass",
       "required": false
     }
   },
