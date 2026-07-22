@@ -119,8 +119,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub__btn{flex:1;box-sizing:border-box;padding:8px 10px;border:1px solid #d4d7da;border-radius:3px;background:#fff;color:#313942;font-size:13px;cursor:pointer;text-align:center}',
         '.dub__btn:hover:not(:disabled){background:#f5f6f7}',
         '.dub__btn:disabled{opacity:.5;cursor:default}',
-        '.dub__btn_primary{background:#2b7de9;border-color:#2b7de9;color:#fff}',
-        '.dub__btn_primary:hover:not(:disabled){background:#226fd0}',
+        '.dub__btn_primary{background:#e11b22;border-color:#e11b22;color:#fff}',
+        '.dub__btn_primary:hover:not(:disabled){background:#c1141b;border-color:#c1141b}',
         /* всплывающее уведомление */
         '.dub-toast{position:fixed;left:20px;bottom:20px;max-width:480px;z-index:999999;background:#313942;color:#fff;padding:10px 16px;border-radius:4px;font-size:13px;line-height:18px;opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s}',
         '.dub-toast_visible{opacity:1;transform:translateY(0)}',
@@ -192,7 +192,42 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         /* под боковое меню настроек, в каком бы контейнере amoCRM мы ни оказались */
         '.dub-adv{box-sizing:border-box}',
         '.dub-adv_col{max-width:1080px;margin:32px 0 56px}',
-        '.dub-adv_wide{max-width:1080px;margin:32px auto 56px;padding:0 20px}'
+        '.dub-adv_wide{max-width:1080px;margin:32px auto 56px;padding:0 20px}',
+        /* ===== фирменная тема Ko:agency (красный акцент) ===== */
+        '.dub-ko__head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 16px}',
+        '.dub-ko__brand{font-size:13px;font-weight:700;color:#26313e;letter-spacing:.2px}',
+        '.dub-ko__brand span{color:#98a0a8;font-weight:400}',
+        '.dub-ko__act{display:flex;align-items:center;gap:12px;flex:0 0 auto}',
+        '.dub-ko__act .dub__btn{flex:0 0 auto;padding:8px 22px;font-weight:600}',
+        /* верхние вкладки */
+        '.dub-tabs{display:flex;gap:2px;border-bottom:1px solid #e7e9ec;margin-bottom:18px;flex-wrap:wrap}',
+        '.dub-tab{-webkit-appearance:none;appearance:none;border:0;background:none;padding:10px 16px;font-size:14px;font-weight:600;color:#7b828b;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}',
+        '.dub-tab:hover{color:#26313e}',
+        '.dub-tab_active{color:#e11b22;border-bottom-color:#e11b22}',
+        '.dub-pane{display:none}',
+        '.dub-pane_active{display:block}',
+        /* под-вкладки (сегмент-контрол) */
+        '.dub-subtabs{display:inline-flex;gap:3px;margin-bottom:16px;background:#f2f3f5;padding:3px;border-radius:9px}',
+        '.dub-subtab{-webkit-appearance:none;appearance:none;border:0;background:none;padding:7px 14px;font-size:13px;font-weight:600;color:#7b828b;cursor:pointer;border-radius:6px}',
+        '.dub-subtab:hover{color:#26313e}',
+        '.dub-subtab_active{background:#fff;color:#e11b22;box-shadow:0 1px 2px rgba(38,49,62,.1)}',
+        '.dub-subpane{display:none}',
+        '.dub-subpane_active{display:block}',
+        /* карточка-секция */
+        '.dub-card{border:1px solid #e7e9ec;border-radius:10px;padding:16px 18px;margin-bottom:14px;background:#fff}',
+        '.dub-card__title{font-size:15px;font-weight:700;color:#26313e;margin-bottom:6px}',
+        '.dub-card__hint{font-size:12px;color:#98a0a8;line-height:1.5;margin-bottom:12px}',
+        /* тумблер-переключатель */
+        '.dub-switch{display:flex;align-items:center;gap:14px;padding:11px 2px;cursor:pointer;font-size:14px;color:#26313e;margin:0}',
+        '.dub-switch+.dub-switch{border-top:1px solid #f0f1f3}',
+        '.dub-switch__text{flex:1;min-width:0}',
+        '.dub-switch__text b{font-weight:600}',
+        '.dub-switch input{position:absolute;opacity:0;width:0;height:0}',
+        '.dub-switch__track{position:relative;flex:0 0 auto;width:40px;height:23px;border-radius:23px;background:#cfd4da;transition:background .2s}',
+        '.dub-switch__thumb{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}',
+        '.dub-switch input:checked+.dub-switch__track{background:#e11b22}',
+        '.dub-switch input:checked+.dub-switch__track .dub-switch__thumb{transform:translateX(17px)}',
+        '.dub-auto__meta{color:#98a0a8;font-size:12px;font-weight:400}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -650,29 +685,107 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '<div class="dub-rules__list">' + list + '</div>' + add);
     }
 
-    // Разметка панели настроек по загруженным данным (настройки + правила).
+    function entitySwitch(ent, labelKey, labelFb, checked) {
+      return '<label class="dub-switch">' +
+        '<span class="dub-switch__text">' + escapeHtml(t(labelKey, labelFb)) + '</span>' +
+        '<input type="checkbox" class="dub-ent" data-ent="' + ent + '"' + (checked ? ' checked' : '') + '>' +
+        '<span class="dub-switch__track"><span class="dub-switch__thumb"></span></span></label>';
+    }
+
+    function tabBtn(id, key, fb, active) {
+      return '<button type="button" class="dub-tab' + (active ? ' dub-tab_active' : '') +
+        '" data-tab="' + id + '">' + escapeHtml(t(key, fb)) + '</button>';
+    }
+
+    function subBtn(group, id, key, fb, active) {
+      return '<button type="button" class="dub-subtab' + (active ? ' dub-subtab_active' : '') +
+        '" data-subgroup="' + group + '" data-sub="' + id + '">' + escapeHtml(t(key, fb)) + '</button>';
+    }
+
+    // Строка правила во вкладке «Автоматическая очистка»: тумблер авто-объединения.
+    function autoRuleRowHtml(rule) {
+      var fields = (rule.fields || []).map(function (f) { return keyTypeLabel(f.key_type); }).join(', ');
+      return '<label class="dub-switch">' +
+        '<span class="dub-switch__text"><b>' + escapeHtml(rule.name) + '</b>' +
+          '<span class="dub-auto__meta"> · ' + escapeHtml(fields || '—') + ' · ' + escapeHtml(rule.operator) + '</span></span>' +
+        '<input type="checkbox" class="dub-auto__toggle" data-id="' + escapeHtml(rule.id) + '"' +
+          (rule.auto_merge ? ' checked' : '') + '>' +
+        '<span class="dub-switch__track"><span class="dub-switch__thumb"></span></span></label>';
+    }
+
+    // Вкладка «Автоматическая очистка»: под-вкладки по сущностям + тумблеры авто-объединения правил.
+    function autoPaneHtml(rules) {
+      var ents = [
+        ['lead', 'settings.auto_deals', 'Дубли сделок'],
+        ['contact', 'settings.auto_contacts', 'Дубли контактов'],
+        ['company', 'settings.auto_companies', 'Дубли компаний']
+      ];
+      var subtabs = ents.map(function (e, i) { return subBtn('auto', e[0], e[1], e[2], i === 0); }).join('');
+      var panes = ents.map(function (e, i) {
+        var forEnt = rules.filter(function (r) { return r.entity_type === e[0]; });
+        var body = forEnt.length
+          ? forEnt.map(autoRuleRowHtml).join('')
+          : '<div class="dub-settings__placeholder">' +
+              escapeHtml(t('settings.auto_empty',
+                'Нет правил для этой сущности. Создайте правило во вкладке «Правила поиска».')) + '</div>';
+        return '<div class="dub-subpane' + (i === 0 ? ' dub-subpane_active' : '') +
+          '" data-subgroup="auto" data-sub="' + e[0] + '">' + body + '</div>';
+      }).join('');
+      return '<div class="dub-card">' +
+        '<div class="dub-card__hint">' + escapeHtml(t('settings.auto_hint',
+          'Включите авто-объединение для нужных правил — однозначные дубли будут объединяться автоматически.')) +
+        '</div><div class="dub-subtabs">' + subtabs + '</div>' + panes + '</div>';
+    }
+
+    // Разметка панели настроек: вкладочный интерфейс в стиле Ko:agency.
     function settingsHtml(dedup, rules) {
       var ent = dedup.entities || {};
-      var entities = entityCheckbox('contact', 'settings.contacts', 'Контакты', ent.contact !== false) +
-        entityCheckbox('company', 'settings.companies', 'Компании', ent.company !== false) +
-        entityCheckbox('lead', 'settings.leads', 'Сделки', ent.lead !== false);
 
-      var prevent = '<label class="dub-settings__row">' +
-        '<input type="checkbox" class="dub-prevent"' + (dedup.prevent_create ? ' checked' : '') + '> ' +
-        escapeHtml(t('settings.prevent_label', 'Предупреждать о дублях при сохранении')) + '</label>';
-
-      return '<div class="dub-settings__hint">' +
-          escapeHtml(t('widget.short_description', 'Поиск и объединение дублей')) + '</div>' +
-        section('settings.entities', 'Сущности', entities) +
-        rulesSectionHtml(rules) +
-        scanSectionHtml() +
-        dupsSectionHtml() +
-        section('settings.prevent', 'Запрет создания дублей', prevent) +
-        '<div class="dub-settings__foot">' +
+      var head = '<div class="dub-ko__head">' +
+        '<div class="dub-ko__brand">Ko:agency <span>· ' +
+          escapeHtml(t('widget.short_description', 'Поиск и объединение дублей')) + '</span></div>' +
+        '<div class="dub-ko__act"><span class="dub-settings__status"></span>' +
           '<button type="button" class="dub__btn dub__btn_primary dub-settings__save">' +
-            escapeHtml(t('common.save', 'Сохранить')) + '</button>' +
-          '<span class="dub-settings__status"></span>' +
+            escapeHtml(t('common.save', 'Сохранить')) + '</button></div>' +
         '</div>';
+
+      var tabs = '<div class="dub-tabs">' +
+        tabBtn('main', 'settings.tab_widget', 'Настройки виджета', true) +
+        tabBtn('mass', 'settings.tab_mass', 'Массовая очистка', false) +
+        tabBtn('auto', 'settings.tab_auto', 'Автоматическая очистка', false) +
+        '</div>';
+
+      // --- вкладка «Настройки виджета» ---
+      var warnCard = '<div class="dub-card">' +
+        '<div class="dub-card__hint">' + escapeHtml(t('settings.warn_hint',
+          'Отметьте сущности, по которым искать дубли.')) + '</div>' +
+        entitySwitch('lead', 'settings.find_deals', 'Производить поиск дублей сделки', ent.lead !== false) +
+        entitySwitch('contact', 'settings.find_contacts', 'Производить поиск дублей контакта', ent.contact !== false) +
+        entitySwitch('company', 'settings.find_companies', 'Производить поиск дублей компании', ent.company !== false) +
+        '</div>' +
+        '<div class="dub-card">' +
+        '<div class="dub-card__title">' + escapeHtml(t('settings.prevent', 'Запрет создания дублей')) + '</div>' +
+        '<label class="dub-switch"><span class="dub-switch__text">' +
+          escapeHtml(t('settings.prevent_label', 'Предупреждать о дублях при сохранении')) + '</span>' +
+          '<input type="checkbox" class="dub-prevent"' + (dedup.prevent_create ? ' checked' : '') + '>' +
+          '<span class="dub-switch__track"><span class="dub-switch__thumb"></span></span></label>' +
+        '</div>';
+
+      var mainPane = '<div class="dub-pane dub-pane_active" data-pane="main">' +
+        '<div class="dub-subtabs">' +
+          subBtn('main', 'warn', 'settings.sub_warn', 'Предупреждения о дублях', true) +
+          subBtn('main', 'rules', 'settings.sub_rules', 'Правила поиска', false) +
+        '</div>' +
+        '<div class="dub-subpane dub-subpane_active" data-subgroup="main" data-sub="warn">' + warnCard + '</div>' +
+        '<div class="dub-subpane" data-subgroup="main" data-sub="rules">' + rulesSectionHtml(rules) + '</div>' +
+        '</div>';
+
+      var massPane = '<div class="dub-pane" data-pane="mass">' +
+        scanSectionHtml() + dupsSectionHtml() + '</div>';
+
+      var autoPane = '<div class="dub-pane" data-pane="auto">' + autoPaneHtml(rules) + '</div>';
+
+      return head + tabs + mainPane + massPane + autoPane;
     }
 
     function loadErrorHtml() {
@@ -966,6 +1079,11 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     function bindSettingsActions() {
       $(document)
         .off('click.dubset change.dubset')
+        // переключение вкладок / под-вкладок
+        .on('click.dubset', '.dub-tab', switchTab)
+        .on('click.dubset', '.dub-subtab', switchSubtab)
+        // авто-объединение по правилу
+        .on('change.dubset', '.dub-auto__toggle', toggleAutoMerge)
         .on('click.dubset', '.dub-settings__save', saveSettings)
         .on('click.dubset', '.dub-rule__add', addRule)
         .on('click.dubset', '.dub-rule__del', deleteRule)
@@ -1039,6 +1157,39 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var $row = $(this).closest('.dub-rule');
       apiCall('PATCH', '/api/rules/' + encodeURIComponent($row.attr('data-id')),
         { enabled: $(this).prop('checked') }, null, function () {
+          settingsStatus(t('settings.save_failed', 'Не удалось сохранить'), true);
+        });
+    }
+
+    // Переключение верхних вкладок (Настройки виджета / Массовая очистка / Автоматическая очистка).
+    function switchTab() {
+      var id = $(this).attr('data-tab');
+      var $root = $(this).closest('.dub-settings');
+      $root.find('.dub-tab').removeClass('dub-tab_active');
+      $(this).addClass('dub-tab_active');
+      $root.find('.dub-pane').removeClass('dub-pane_active');
+      $root.find('.dub-pane[data-pane="' + id + '"]').addClass('dub-pane_active');
+    }
+
+    // Переключение под-вкладок внутри группы (main: предупреждения/правила; auto: по сущностям).
+    function switchSubtab() {
+      var group = $(this).attr('data-subgroup');
+      var sub = $(this).attr('data-sub');
+      var $root = $(this).closest('.dub-settings');
+      $root.find('.dub-subtab[data-subgroup="' + group + '"]').removeClass('dub-subtab_active');
+      $(this).addClass('dub-subtab_active');
+      $root.find('.dub-subpane[data-subgroup="' + group + '"]').removeClass('dub-subpane_active');
+      $root.find('.dub-subpane[data-subgroup="' + group + '"][data-sub="' + sub + '"]')
+        .addClass('dub-subpane_active');
+    }
+
+    // Тумблер авто-объединения правила (PATCH /api/rules/:id { auto_merge }).
+    function toggleAutoMerge() {
+      var checked = $(this).prop('checked');
+      apiCall('PATCH', '/api/rules/' + encodeURIComponent($(this).attr('data-id')),
+        { auto_merge: checked }, function () {
+          settingsStatus(t('settings.saved', 'Настройки сохранены'), false);
+        }, function () {
           settingsStatus(t('settings.save_failed', 'Не удалось сохранить'), true);
         });
     }

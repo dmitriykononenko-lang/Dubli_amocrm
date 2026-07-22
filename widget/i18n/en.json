@@ -72,7 +72,21 @@
     "key_custom": "Field",
     "pick_master": "Choose the record to keep — the rest merge into it (can be rolled back).",
     "merge_done": "Duplicates merged",
-    "merge_failed": "Merge failed"
+    "merge_failed": "Merge failed",
+    "tab_widget": "Widget settings",
+    "tab_mass": "Mass cleanup",
+    "tab_auto": "Automatic cleanup",
+    "sub_warn": "Duplicate warnings",
+    "sub_rules": "Search rules",
+    "warn_hint": "Choose the entities to search duplicates for.",
+    "find_deals": "Search duplicate leads",
+    "find_contacts": "Search duplicate contacts",
+    "find_companies": "Search duplicate companies",
+    "auto_hint": "Enable auto-merge for the rules you want — unambiguous duplicates will be merged automatically.",
+    "auto_empty": "No rules for this entity. Create one on the “Search rules” tab.",
+    "auto_deals": "Lead duplicates",
+    "auto_contacts": "Contact duplicates",
+    "auto_companies": "Company duplicates"
   },
   "advanced": {
     "title": "Duplicates: cleanup & merge"

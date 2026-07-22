@@ -677,6 +677,65 @@ section('Найденные дубли: авто-загрузка списка �
   $modalBody.remove();
 }
 
+section('Вкладки: переключение верхних вкладок и под-вкладок');
+{
+  resetEnv();
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/scan/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $b = settingsBody();
+  widget.callbacks.settings($b);
+
+  assert($b.find('.dub-pane[data-pane="main"]').hasClass('dub-pane_active'), 'main-вкладка активна по умолчанию');
+  assert(!$b.find('.dub-pane[data-pane="mass"]').hasClass('dub-pane_active'), 'mass-вкладка скрыта по умолчанию');
+
+  $b.find('.dub-tab[data-tab="mass"]').trigger('click');
+  assert($b.find('.dub-pane[data-pane="mass"]').hasClass('dub-pane_active'), 'mass активна после клика');
+  assert(!$b.find('.dub-pane[data-pane="main"]').hasClass('dub-pane_active'), 'main скрыта после клика');
+  assert($b.find('.dub-tab[data-tab="mass"]').hasClass('dub-tab_active'), 'таб mass подсвечен');
+
+  $b.find('.dub-subtab[data-subgroup="main"][data-sub="rules"]').trigger('click');
+  assert($b.find('.dub-subpane[data-subgroup="main"][data-sub="rules"]').hasClass('dub-subpane_active'),
+    'под-вкладка «Правила поиска» активна');
+  assert(!$b.find('.dub-subpane[data-subgroup="main"][data-sub="warn"]').hasClass('dub-subpane_active'),
+    'под-вкладка «Предупреждения» скрыта');
+
+  widget.callbacks.destroy();
+  $b.remove();
+}
+
+section('Автоматическая очистка: тумблер авто-объединения правила (PATCH auto_merge)');
+{
+  resetEnv();
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [
+      { id: '9', entity_type: 'contact', name: 'По телефону', fields: [{ key_type: 'phone' }], operator: 'AND', enabled: true, auto_merge: false }
+    ] };
+    if (/\/api\/scan/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $b = settingsBody();
+  widget.callbacks.settings($b);
+
+  const $toggle = $b.find('.dub-subpane[data-subgroup="auto"][data-sub="contact"] .dub-auto__toggle[data-id="9"]');
+  assert($toggle.length === 1, 'тумблер авто-объединения правила #9 в под-вкладке «Дубли контактов»');
+  assert($toggle.prop('checked') === false, 'изначально авто-объединение выключено');
+
+  $toggle.prop('checked', true).trigger('change');
+  const patch = ajaxCalls.find((c) => c.method === 'PATCH' && /\/api\/rules\/9/.test(c.url));
+  assert(!!patch, 'выполнен PATCH /api/rules/9');
+  assert(JSON.parse(patch.data || '{}').auto_merge === true, 'тело содержит auto_merge: true');
+
+  widget.callbacks.destroy();
+  $b.remove();
+}
+
 section('advanced_settings: монтируемся в колонку заголовка, не под меню');
 {
   resetEnv();
