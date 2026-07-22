@@ -66,6 +66,8 @@ export const envSchema = z.object({
   VENDOR_AMOCRM_STATUS_INSTALLED: emptyable(z.coerce.number().int().positive().optional()),
   VENDOR_AMOCRM_STATUS_REQUESTED: emptyable(z.coerce.number().int().positive().optional()),
   VENDOR_AMOCRM_STATUS_PAID: emptyable(z.coerce.number().int().positive().optional()),
+  // ID кастом-поля лида для «ID аккаунта amo|kommo» клиента (напр. 1173679).
+  VENDOR_AMOCRM_ACCOUNT_FIELD_ID: emptyable(z.coerce.number().int().positive().optional()),
   // ЮKassa (онлайн-оплата) — включается, когда заданы оба.
   YOOKASSA_SHOP_ID: z.string().optional(),
   YOOKASSA_SECRET_KEY: z.string().optional(),

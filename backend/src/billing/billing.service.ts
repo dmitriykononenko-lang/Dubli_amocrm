@@ -239,11 +239,18 @@ export class BillingService {
    * Возвращает id сделки или null, если vendor-аккаунт не настроен.
    */
   private async ensureClientDeal(clientAccountId: string): Promise<string | null> {
-    const settings = await this.accounts.getSettings(clientAccountId);
-    if (settings.vendor_lead_id) return String(settings.vendor_lead_id);
-
     const vendorId = await this.resolveVendorAccountId();
     if (!vendorId) return null;
+
+    const settings = await this.accounts.getSettings(clientAccountId);
+    if (settings.vendor_lead_id) {
+      if (await this.dealExists(vendorId, String(settings.vendor_lead_id))) {
+        return String(settings.vendor_lead_id);
+      }
+      this.log.warn(
+        `Сделка ${settings.vendor_lead_id} клиента ${clientAccountId} не найдена в vendor CRM — создаю заново`,
+      );
+    }
 
     const clientSub = await this.clientSubdomain(clientAccountId);
     const payload: Record<string, unknown> = { name: `Дубли: ${clientSub}` };
@@ -251,6 +258,13 @@ export class BillingService {
     if (pipelineId) payload.pipeline_id = pipelineId;
     const stages = await this.resolveStages(vendorId);
     if (stages.installed) payload.status_id = stages.installed;
+    // Кастом-поле «ID аккаунта amo|kommo» клиента (если задан VENDOR_AMOCRM_ACCOUNT_FIELD_ID).
+    const fieldId = this.config.vendorAmocrmAccountFieldId;
+    if (fieldId) {
+      payload.custom_fields_values = [
+        { field_id: fieldId, values: [{ value: String(clientAccountId) }] },
+      ];
+    }
 
     const leadId = await this.amocrm.create(vendorId, 'lead', payload);
     await this.accounts.updateSettings(clientAccountId, { ...settings, vendor_lead_id: leadId });
@@ -258,8 +272,48 @@ export class BillingService {
       () => this.amocrm.addNote(vendorId, 'lead', leadId, `Клиент установил виджет «Дубли»: ${clientSub}`),
       'addNote(installed)',
     );
-    this.log.log(`Клиент ${clientSub} установил виджет → сделка #${leadId} в vendor ${vendorId}`);
+    this.log.log(`Клиент ${clientSub} (${clientAccountId}) → сделка #${leadId} в vendor ${vendorId}`);
     return leadId;
+  }
+
+  /** Существует ли сделка в vendor CRM. false только при явном 404 (удалена). */
+  private async dealExists(vendorId: string, leadId: string): Promise<boolean> {
+    try {
+      await this.amocrm.getById(vendorId, 'lead', leadId);
+      return true;
+    } catch (e) {
+      if (/amoCRM API 404/.test(String(e))) return false;
+      return true; // транзиентная ошибка — не пересоздаём, чтобы не плодить дубли
+    }
+  }
+
+  /**
+   * Бэкфилл: для всех аккаунтов без сделки (или с удалённой) создаёт сделку «установлен».
+   * Идемпотентно (ensureClientDeal + dealExists). Запускается разово скриптом.
+   */
+  async backfillVendorDeals(): Promise<{ created: number; skipped: number; failed: number }> {
+    const vendorId = await this.resolveVendorAccountId();
+    if (!vendorId) throw new ServiceUnavailableException('Vendor-аккаунт не настроен (нет токена/субдомена)');
+    const accounts = await this.accounts.listAll();
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+    for (const a of accounts) {
+      const id = String(a.account_id);
+      try {
+        const s = await this.accounts.getSettings(id);
+        const had = Boolean(s.vendor_lead_id);
+        const dealId = await this.ensureClientDeal(id);
+        if (!dealId) skipped++;
+        else if (had) skipped++;
+        else created++;
+      } catch (e) {
+        failed++;
+        this.log.warn(`Бэкфилл: аккаунт ${id} — ${String(e)}`);
+      }
+    }
+    this.log.log(`Бэкфилл vendor-сделок: создано ${created}, пропущено ${skipped}, ошибок ${failed}`);
+    return { created, skipped, failed };
   }
 
   /**

@@ -49,6 +49,11 @@ export class AccountsRepository {
       .executeTakeFirst();
   }
 
+  /** Все аккаунты (для бэкфилла vendor-сделок). */
+  async listAll() {
+    return this.db.selectFrom('accounts').select(['account_id', 'subdomain']).execute();
+  }
+
   async getSettings(accountId: string): Promise<AccountSettings> {
     requireAccountId(accountId);
     const row = await this.db

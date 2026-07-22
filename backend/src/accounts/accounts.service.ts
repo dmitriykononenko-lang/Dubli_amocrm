@@ -18,6 +18,10 @@ export class AccountsService {
     return this.repo.findBySubdomain(subdomain);
   }
 
+  listAll() {
+    return this.repo.listAll();
+  }
+
   getSettings(accountId: string): Promise<AccountSettings> {
     return this.repo.getSettings(accountId);
   }

@@ -31,12 +31,14 @@ function make(
     addNote: jest.fn().mockResolvedValue(undefined),
     createTask: jest.fn().mockResolvedValue(undefined),
     getPipelineStatuses: jest.fn().mockResolvedValue([]),
+    getById: jest.fn().mockResolvedValue({ id: 55501 }),
   } as unknown as AmocrmService;
   const accounts = {
     getSettings: jest.fn().mockResolvedValue({ ...settings }),
     updateSettings: jest.fn().mockResolvedValue(undefined),
     findById: jest.fn().mockResolvedValue({ subdomain: 'clientco' }),
     findBySubdomain: jest.fn(),
+    listAll: jest.fn().mockResolvedValue([]),
   } as unknown as AccountsService;
   const ykEnabled = Boolean(configOverrides.yookassaShopId && configOverrides.yookassaSecretKey);
   const yookassa = {
@@ -67,10 +69,33 @@ describe('BillingService — установка клиента', () => {
     expect(amocrm.addNote).toHaveBeenCalledWith('900', 'lead', '55501', expect.stringContaining('установил'));
   });
 
-  it('не создаёт вторую сделку, если vendor_lead_id уже есть', async () => {
+  it('не создаёт вторую сделку, если vendor_lead_id уже есть и сделка существует', async () => {
     const { svc, amocrm } = make({}, { vendor_lead_id: '999' });
     await svc.onClientInstalled('778');
     expect(amocrm.create).not.toHaveBeenCalled();
+  });
+
+  it('оживление: если сделка по vendor_lead_id удалена (404) — создаёт заново', async () => {
+    const { svc, amocrm } = make({}, { vendor_lead_id: '999' });
+    (amocrm.getById as jest.Mock).mockRejectedValue(new Error('amoCRM API 404: not found'));
+    await svc.onClientInstalled('778');
+    expect(amocrm.create).toHaveBeenCalled();
+  });
+
+  it('транзиентная ошибка проверки сделки — НЕ пересоздаёт (без дублей)', async () => {
+    const { svc, amocrm } = make({}, { vendor_lead_id: '999' });
+    (amocrm.getById as jest.Mock).mockRejectedValue(new Error('amoCRM API 500'));
+    await svc.onClientInstalled('778');
+    expect(amocrm.create).not.toHaveBeenCalled();
+  });
+
+  it('кладёт кастом-поле «ID аккаунта» при создании сделки', async () => {
+    const { svc, amocrm } = make({ vendorAmocrmAccountFieldId: 1173679 });
+    await svc.onClientInstalled('778');
+    const payload = (amocrm.create as jest.Mock).mock.calls[0][2];
+    expect(payload.custom_fields_values).toEqual([
+      { field_id: 1173679, values: [{ value: '778' }] },
+    ]);
   });
 
   it('не роняет установку при ошибке amoCRM', async () => {
@@ -214,6 +239,22 @@ describe('BillingService.saveContact', () => {
     );
     await svc.saveContact('778', { phone: '+79990001122' });
     expect(amocrm.addNote).not.toHaveBeenCalled();
+  });
+});
+
+describe('BillingService.backfillVendorDeals', () => {
+  it('создаёт сделки без vendor_lead_id, пропускает существующие', async () => {
+    const { svc, amocrm, accounts } = make({
+      vendorAmocrmSubdomain: 'koagency.amocrm.ru',
+      vendorAmocrmToken: 't',
+    });
+    (accounts.listAll as jest.Mock).mockResolvedValue([{ account_id: '1' }, { account_id: '2' }]);
+    (accounts.getSettings as jest.Mock).mockImplementation((id: string) =>
+      Promise.resolve(id === '2' ? { vendor_lead_id: '55501' } : {}),
+    );
+    const res = await svc.backfillVendorDeals();
+    expect(res).toEqual({ created: 1, skipped: 1, failed: 0 });
+    expect(amocrm.create).toHaveBeenCalledTimes(1);
   });
 });
 

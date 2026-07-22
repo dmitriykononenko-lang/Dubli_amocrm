@@ -80,6 +80,9 @@ export class AppConfigService {
   get vendorAmocrmStatusPaid(): number | undefined {
     return this.get('VENDOR_AMOCRM_STATUS_PAID');
   }
+  get vendorAmocrmAccountFieldId(): number | undefined {
+    return this.get('VENDOR_AMOCRM_ACCOUNT_FIELD_ID');
+  }
   get yookassaShopId(): string | undefined {
     return this.get('YOOKASSA_SHOP_ID');
   }
