@@ -1,4 +1,5 @@
 *.zip
+widget-preview.html
 .DS_Store
 node_modules/
 /package.json
