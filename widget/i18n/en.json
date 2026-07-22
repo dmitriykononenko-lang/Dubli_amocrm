@@ -86,7 +86,23 @@
     "auto_empty": "No rules for this entity. Create one on the “Search rules” tab.",
     "auto_deals": "Lead duplicates",
     "auto_contacts": "Contact duplicates",
-    "auto_companies": "Company duplicates"
+    "auto_companies": "Company duplicates",
+    "tab_pay": "Billing",
+    "pay_hint": "Subscription per amoCRM user. Pay online or request an invoice.",
+    "pay_status_demo": "Demo mode — limited merging available",
+    "pay_status_paid": "Paid until",
+    "pay_users_short": "users",
+    "pay_rate": "per user per month",
+    "pay_min": "minimum",
+    "pay_users": "Number of users",
+    "pay_months": "mo",
+    "pay_gift": "free",
+    "pay_sum": "Total",
+    "pay_online": "Pay online",
+    "pay_invoice": "Request invoice",
+    "pay_invoice_sent": "Invoice requested — our manager will contact you",
+    "pay_soon": "Online payment coming soon",
+    "pay_failed": "Couldn't send the request"
   },
   "advanced": {
     "title": "Duplicates: cleanup & merge"

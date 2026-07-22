@@ -736,6 +736,47 @@ section('Автоматическая очистка: тумблер авто-о
   $b.remove();
 }
 
+section('Оплата: калькулятор тарифа, онлайн-оплата и запрос счёта');
+{
+  resetEnv();
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/scan/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $b = settingsBody();
+  widget.callbacks.settings($b);
+
+  const $pay = $b.find('.dub-pane[data-pane="pay"]');
+  assert($pay.length === 1, 'вкладка «Оплата» отрисована');
+  assert($pay.find('.dub-pay__online').length === 1 && $pay.find('.dub-pay__invoice').length === 1,
+    'кнопки «Оплатить онлайн» и «Запросить счёт» есть');
+  assert($pay.find('.dub-pay__sum').text() === '11 970 ₽', 'сумма по умолчанию 11 970 ₽ (5×6×399)');
+
+  // выбрать срок 12 мес (оплата 10): 5 × 10 × 399 = 19 950 ₽
+  $b.find('.dub-pay__plan[value="12"]').prop('checked', true).trigger('change');
+  assert($b.find('.dub-pay__sum').text() === '19 950 ₽', 'смена срока пересчитывает сумму');
+
+  // 8 пользователей × 10 × 399 = 31 920 ₽ (срок сохраняется)
+  $b.find('.dub-pay__users').val('8').trigger('change');
+  assert($b.find('.dub-pay__sum').text() === '31 920 ₽', '8×10×399 = 31 920 ₽');
+
+  $b.find('.dub-pay__invoice').trigger('click');
+  const inv = ajaxCalls.find((c) => c.method === 'POST' && /\/api\/billing\/invoice-request/.test(c.url));
+  assert(!!inv, 'выполнен POST /api/billing/invoice-request');
+  const invBody = JSON.parse(inv.data || '{}');
+  assert(invBody.users === 8 && invBody.months === 12, 'в теле счёта users=8, months=12');
+
+  $b.find('.dub-pay__online').trigger('click');
+  assert(ajaxCalls.some((c) => c.method === 'POST' && /\/api\/billing\/checkout/.test(c.url)),
+    'выполнен POST /api/billing/checkout');
+
+  widget.callbacks.destroy();
+  $b.remove();
+}
+
 section('advanced_settings: монтируемся в колонку заголовка, не под меню');
 {
   resetEnv();

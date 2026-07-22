@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.2';
+    var WIDGET_BUILD = '2026-07-22.3';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -31,6 +31,17 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       { prefix: 'ccard', entity: 'contacts' },
       { prefix: 'comcard', entity: 'companies' }
     ];
+
+    // Тариф (по умолчанию как у конкурентов; итог считает бэкенд, здесь — только показ).
+    // months — срок подписки, pay — сколько месяцев оплачивается (разница = бонус).
+    var BILLING = {
+      pricePerUser: 399,
+      minUsers: 5,
+      plans: [
+        { id: '6', months: 6, pay: 6 },
+        { id: '12', months: 12, pay: 10 }
+      ]
+    };
 
     /* ------------------------------ локализация ------------------------------ */
 
@@ -227,7 +238,26 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-switch__thumb{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}',
         '.dub-switch input:checked+.dub-switch__track{background:#e11b22}',
         '.dub-switch input:checked+.dub-switch__track .dub-switch__thumb{transform:translateX(17px)}',
-        '.dub-auto__meta{color:#98a0a8;font-size:12px;font-weight:400}'
+        '.dub-auto__meta{color:#98a0a8;font-size:12px;font-weight:400}',
+        /* вкладка «Оплата» */
+        '.dub-pay__status{font-size:13px;font-weight:600;color:#8a919a;margin-bottom:6px}',
+        '.dub-pay__status_ok{color:#1f9d57}',
+        '.dub-pay__rate{font-size:13px;color:#26313e;margin-bottom:14px}',
+        '.dub-pay__row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}',
+        '.dub-pay__label{font-size:14px;color:#26313e}',
+        '.dub-pay__users{width:110px;padding:8px 10px;border:1px solid #d4d7da;border-radius:6px;font-size:14px;text-align:center;box-sizing:border-box}',
+        '.dub-pay__plans{display:flex;gap:12px;margin-bottom:6px;flex-wrap:wrap}',
+        '.dub-plan{flex:1 1 160px;min-width:150px;border:2px solid #e7e9ec;border-radius:10px;padding:14px;cursor:pointer;text-align:center;display:flex;flex-direction:column;gap:4px;position:relative}',
+        '.dub-plan:hover{border-color:#cfd4da}',
+        '.dub-plan_active{border-color:#e11b22}',
+        '.dub-plan input{position:absolute;opacity:0;width:0;height:0}',
+        '.dub-plan__months{font-size:15px;font-weight:700;color:#26313e}',
+        '.dub-plan__bonus{font-size:12px;color:#e11b22;min-height:16px}',
+        '.dub-plan__sum{font-size:14px;color:#26313e;margin-top:2px}',
+        '.dub-pay__total{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid #f0f1f3;margin-top:8px;margin-bottom:14px}',
+        '.dub-pay__total b{font-size:22px;color:#26313e}',
+        '.dub-pay__actions{display:flex;gap:12px;flex-wrap:wrap}',
+        '.dub-pay__actions .dub__btn{flex:0 0 auto;padding:10px 24px;font-weight:600}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -737,6 +767,65 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '</div><div class="dub-subtabs">' + subtabs + '</div>' + panes + '</div>';
     }
 
+    // Сумма — целое число с разделением тысяч пробелом и знаком рубля.
+    function fmtMoney(n) {
+      return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
+    }
+
+    // Расчёт подписки (для показа; авторитетный расчёт — на бэкенде при оплате).
+    function calcPaySum(users, planId) {
+      var u = Math.max(BILLING.minUsers, parseInt(users, 10) || 0);
+      var plan = BILLING.plans.filter(function (p) { return p.id === planId; })[0] || BILLING.plans[0];
+      return { users: u, plan: plan, sum: BILLING.pricePerUser * u * plan.pay };
+    }
+
+    function payPlanCardsHtml(users, activeId) {
+      var mo = t('settings.pay_months', 'мес');
+      return BILLING.plans.map(function (p) {
+        var sum = BILLING.pricePerUser * Math.max(BILLING.minUsers, users) * p.pay;
+        var bonus = p.months - p.pay;
+        return '<label class="dub-plan' + (p.id === activeId ? ' dub-plan_active' : '') + '">' +
+          '<input type="radio" name="dub-plan" class="dub-pay__plan" value="' + p.id + '"' +
+            (p.id === activeId ? ' checked' : '') + '>' +
+          '<span class="dub-plan__months">' + p.months + ' ' + escapeHtml(mo) + '</span>' +
+          '<span class="dub-plan__bonus">' + (bonus > 0
+            ? '+' + bonus + ' ' + escapeHtml(mo) + ' ' + escapeHtml(t('settings.pay_gift', 'в подарок')) : '') + '</span>' +
+          '<span class="dub-plan__sum">' + fmtMoney(sum) + '</span>' +
+          '</label>';
+      }).join('');
+    }
+
+    // Вкладка «Оплата»: тариф, число пользователей, срок, сумма, онлайн-оплата и счёт.
+    function payPaneHtml(status) {
+      var activeId = BILLING.plans[0].id;
+      var calc = calcPaySum((status && status.paid_users) || BILLING.minUsers, activeId);
+      var paid = status && status.paid_until;
+      var statusLine = paid
+        ? escapeHtml(t('settings.pay_status_paid', 'Оплачено до')) + ' ' + escapeHtml(String(status.paid_until)) +
+          ' · ' + escapeHtml(String(status.paid_users || calc.users)) + ' ' + escapeHtml(t('settings.pay_users_short', 'польз.'))
+        : escapeHtml(t('settings.pay_status_demo', 'Демо-режим — доступно ограниченное объединение'));
+      return '<div class="dub-card">' +
+        '<div class="dub-pay__status' + (paid ? ' dub-pay__status_ok' : '') + '">' + statusLine + '</div>' +
+        '<div class="dub-card__hint">' + escapeHtml(t('settings.pay_hint',
+          'Подписка за пользователя amoCRM. Оплатите онлайн или запросите счёт.')) + '</div>' +
+        '<div class="dub-pay__rate">' + BILLING.pricePerUser + ' ₽ ' +
+          escapeHtml(t('settings.pay_rate', 'за пользователя в месяц')) + ' · ' +
+          escapeHtml(t('settings.pay_min', 'минимум')) + ' ' + BILLING.minUsers + '</div>' +
+        '<div class="dub-pay__row"><span class="dub-pay__label">' +
+          escapeHtml(t('settings.pay_users', 'Число пользователей')) + '</span>' +
+          '<input type="number" class="dub-pay__users" min="' + BILLING.minUsers + '" value="' + calc.users + '"></div>' +
+        '<div class="dub-pay__plans">' + payPlanCardsHtml(calc.users, activeId) + '</div>' +
+        '<div class="dub-pay__total"><span>' + escapeHtml(t('settings.pay_sum', 'Сумма')) +
+          '</span><b class="dub-pay__sum">' + fmtMoney(calc.sum) + '</b></div>' +
+        '<div class="dub-pay__actions">' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-pay__online">' +
+            escapeHtml(t('settings.pay_online', 'Оплатить онлайн')) + '</button>' +
+          '<button type="button" class="dub__btn dub-pay__invoice">' +
+            escapeHtml(t('settings.pay_invoice', 'Запросить счёт')) + '</button>' +
+        '</div>' +
+        '</div>';
+    }
+
     // Разметка панели настроек: вкладочный интерфейс в стиле Ko:agency.
     function settingsHtml(dedup, rules) {
       var ent = dedup.entities || {};
@@ -753,6 +842,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         tabBtn('main', 'settings.tab_widget', 'Настройки виджета', true) +
         tabBtn('mass', 'settings.tab_mass', 'Массовая очистка', false) +
         tabBtn('auto', 'settings.tab_auto', 'Автоматическая очистка', false) +
+        tabBtn('pay', 'settings.tab_pay', 'Оплата', false) +
         '</div>';
 
       // --- вкладка «Настройки виджета» ---
@@ -785,7 +875,9 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
 
       var autoPane = '<div class="dub-pane" data-pane="auto">' + autoPaneHtml(rules) + '</div>';
 
-      return head + tabs + mainPane + massPane + autoPane;
+      var payPane = '<div class="dub-pane" data-pane="pay">' + payPaneHtml(dedup && dedup.billing) + '</div>';
+
+      return head + tabs + mainPane + massPane + autoPane + payPane;
     }
 
     function loadErrorHtml() {
@@ -1084,6 +1176,10 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         .on('click.dubset', '.dub-subtab', switchSubtab)
         // авто-объединение по правилу
         .on('change.dubset', '.dub-auto__toggle', toggleAutoMerge)
+        // оплата: пересчёт суммы, онлайн-оплата, запрос счёта
+        .on('change.dubset', '.dub-pay__users, .dub-pay__plan', recalcPay)
+        .on('click.dubset', '.dub-pay__online', payOnline)
+        .on('click.dubset', '.dub-pay__invoice', payInvoice)
         .on('click.dubset', '.dub-settings__save', saveSettings)
         .on('click.dubset', '.dub-rule__add', addRule)
         .on('click.dubset', '.dub-rule__del', deleteRule)
@@ -1181,6 +1277,38 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       $root.find('.dub-subpane[data-subgroup="' + group + '"]').removeClass('dub-subpane_active');
       $root.find('.dub-subpane[data-subgroup="' + group + '"][data-sub="' + sub + '"]')
         .addClass('dub-subpane_active');
+    }
+
+    // Пересчёт суммы во вкладке «Оплата» при смене числа пользователей / срока.
+    function recalcPay() {
+      var $root = $('.dub-settings');
+      var planId = $root.find('.dub-pay__plan:checked').val() || BILLING.plans[0].id;
+      var calc = calcPaySum($root.find('.dub-pay__users').val(), planId);
+      $root.find('.dub-pay__users').val(calc.users);
+      $root.find('.dub-pay__plans').html(payPlanCardsHtml(calc.users, planId));
+      $root.find('.dub-pay__sum').text(fmtMoney(calc.sum));
+    }
+
+    // Онлайн-оплата: бэкенд создаёт платёж (ЮKassa) и возвращает ссылку на оплату.
+    function payOnline() {
+      var $root = $('.dub-settings');
+      var planId = $root.find('.dub-pay__plan:checked').val() || BILLING.plans[0].id;
+      var calc = calcPaySum($root.find('.dub-pay__users').val(), planId);
+      apiCall('POST', '/api/billing/checkout', { users: calc.users, months: calc.plan.months },
+        function (resp) {
+          if (resp && resp.confirmation_url) { window.location.href = resp.confirmation_url; }
+          else { showToast(t('settings.pay_soon', 'Онлайн-оплата скоро будет доступна')); }
+        }, function () { showToast(t('settings.pay_soon', 'Онлайн-оплата скоро будет доступна'), true); });
+    }
+
+    // Запрос счёта: бэкенд создаёт сделку в нашей amoCRM для выставления счёта.
+    function payInvoice() {
+      var $root = $('.dub-settings');
+      var planId = $root.find('.dub-pay__plan:checked').val() || BILLING.plans[0].id;
+      var calc = calcPaySum($root.find('.dub-pay__users').val(), planId);
+      apiCall('POST', '/api/billing/invoice-request', { users: calc.users, months: calc.plan.months },
+        function () { showToast(t('settings.pay_invoice_sent', 'Счёт запрошен — менеджер свяжется с вами')); },
+        function () { showToast(t('settings.pay_failed', 'Не удалось отправить запрос'), true); });
     }
 
     // Тумблер авто-объединения правила (PATCH /api/rules/:id { auto_merge }).
