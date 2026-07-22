@@ -3,14 +3,14 @@
     "name": "widget.name",
     "description": "widget.description",
     "short_description": "widget.short_description",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "interface_version": 2,
     "init_once": false,
     "locale": [
       "ru",
       "en"
     ],
-    "installation": "y",
+    "installation": true,
     "oauth": "Y",
     "support": {
       "link": "https://github.com/dmitriykononenko-lang/Dubli_amocrm",
