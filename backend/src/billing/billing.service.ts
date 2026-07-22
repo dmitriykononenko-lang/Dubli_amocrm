@@ -3,6 +3,7 @@ import { AppConfigService } from '../config/app-config.service';
 import { AmocrmService } from '../amocrm/amocrm.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { computeQuote, type Quote } from './billing.pricing';
+import { YookassaClient } from './yookassa.client';
 
 /**
  * Ведение клиента виджета в НАШЕЙ (Ko:agency) amoCRM по этапам:
@@ -12,11 +13,13 @@ import { computeQuote, type Quote } from './billing.pricing';
 @Injectable()
 export class BillingService {
   private readonly log = new Logger('Billing');
+  private stagesCache: { installed?: number; requested?: number; paid?: number } | null = null;
 
   constructor(
     private readonly config: AppConfigService,
     private readonly amocrm: AmocrmService,
     private readonly accounts: AccountsService,
+    private readonly yookassa: YookassaClient,
   ) {}
 
   quote(users: number, months: number): Quote {
@@ -58,9 +61,9 @@ export class BillingService {
     if (!dealId) throw new ServiceUnavailableException('Не удалось создать сделку клиента');
 
     const clientSub = await this.clientSubdomain(clientAccountId);
+    const stages = await this.resolveStages(vendorId);
     const patch: Record<string, unknown> = { price: q.sum };
-    const requested = this.config.vendorAmocrmStatusRequested;
-    if (requested) patch.status_id = requested;
+    if (stages.requested) patch.status_id = stages.requested;
     await this.amocrm.update(vendorId, 'lead', dealId, patch);
 
     await this.amocrm.addNote(
@@ -84,17 +87,69 @@ export class BillingService {
    * сообщением. Полная реализация (Create Payment → confirmation_url + webhook) — далее.
    */
   async createCheckout(
-    _clientAccountId: string,
+    clientAccountId: string,
     users: number,
     months: number,
   ): Promise<{ confirmation_url: string; sum: number }> {
-    this.quote(users, months);
-    if (!this.config.yookassaShopId || !this.config.yookassaSecretKey) {
+    const q = this.quote(users, months);
+    if (!this.yookassa.enabled) {
       throw new ServiceUnavailableException(
         'Онлайн-оплата будет включена после настройки ЮKassa (YOOKASSA_SHOP_ID/SECRET_KEY)',
       );
     }
-    throw new ServiceUnavailableException('Онлайн-оплата ЮKassa ещё не подключена');
+    const clientSub = await this.clientSubdomain(clientAccountId);
+    const returnUrl = this.config.billingReturnUrl ?? 'https://dubli.koagency.ru';
+    const payment = await this.yookassa.createPayment({
+      amount: q.sum,
+      description: `Дубли: подписка ${q.users} польз. × ${q.months} мес (${clientSub})`,
+      returnUrl,
+      metadata: { accountId: clientAccountId, users: q.users, months: q.months },
+    });
+    const url = payment.confirmation?.confirmation_url;
+    if (!url) throw new ServiceUnavailableException('ЮKassa не вернула ссылку на оплату');
+    this.log.log(`Клиент ${clientSub}: платёж ЮKassa ${payment.id} на ${q.sum} ₽`);
+    return { confirmation_url: url, sum: q.sum };
+  }
+
+  /**
+   * Уведомление ЮKassa о платеже. Тело не доверяем — перепроверяем платёж по id.
+   * При успехе продлеваем подписку и двигаем сделку клиента на «Оплачен».
+   */
+  async handlePaymentNotification(paymentId: string): Promise<void> {
+    if (!this.yookassa.enabled || !paymentId) return;
+    const p = await this.yookassa.getPayment(paymentId);
+    if (p.status !== 'succeeded') return;
+    const accountId = String((p.metadata?.accountId as string | number | undefined) ?? '');
+    const months = Number(p.metadata?.months ?? 0);
+    if (!accountId) return;
+    await this.markPaid(accountId, months);
+    await this.moveDealToPaid(accountId);
+    this.log.log(`Оплата подтверждена: аккаунт ${accountId}, +${months} мес (платёж ${p.id})`);
+  }
+
+  /** Продление подписки: paid_until = max(сейчас, текущий paid_until) + months. */
+  private async markPaid(clientAccountId: string, months: number): Promise<void> {
+    const settings = await this.accounts.getSettings(clientAccountId);
+    const now = new Date();
+    const base =
+      settings.paid_until && new Date(String(settings.paid_until)) > now
+        ? new Date(String(settings.paid_until))
+        : now;
+    base.setMonth(base.getMonth() + Math.max(1, months));
+    await this.accounts.updateSettings(clientAccountId, {
+      ...settings,
+      paid_until: base.toISOString(),
+    });
+  }
+
+  private async moveDealToPaid(clientAccountId: string): Promise<void> {
+    const vendorId = await this.resolveVendorAccountId();
+    if (!vendorId) return;
+    const dealId = await this.ensureClientDeal(clientAccountId);
+    if (!dealId) return;
+    const stages = await this.resolveStages(vendorId);
+    if (stages.paid) await this.amocrm.update(vendorId, 'lead', dealId, { status_id: stages.paid });
+    await this.amocrm.addNote(vendorId, 'lead', dealId, 'Оплата получена (ЮKassa)');
   }
 
   /**
@@ -111,9 +166,9 @@ export class BillingService {
     const clientSub = await this.clientSubdomain(clientAccountId);
     const payload: Record<string, unknown> = { name: `Дубли: ${clientSub}` };
     const pipelineId = this.config.vendorAmocrmPipelineId;
-    const installed = this.config.vendorAmocrmStatusInstalled;
     if (pipelineId) payload.pipeline_id = pipelineId;
-    if (installed) payload.status_id = installed;
+    const stages = await this.resolveStages(vendorId);
+    if (stages.installed) payload.status_id = stages.installed;
 
     const leadId = await this.amocrm.create(vendorId, 'lead', payload);
     await this.accounts.updateSettings(clientAccountId, { ...settings, vendor_lead_id: leadId });
@@ -125,6 +180,39 @@ export class BillingService {
     );
     this.log.log(`Клиент ${clientSub} установил виджет → сделка #${leadId} в vendor ${vendorId}`);
     return leadId;
+  }
+
+  /**
+   * Этапы воронки для перехода сделки. Приоритет — явные ID из .env; иначе, если
+   * задана воронка, находим этапы по названию (ключевые слова «установ»/«счет»/«оплач»),
+   * чтобы достаточно было указать только VENDOR_AMOCRM_PIPELINE_ID.
+   */
+  private async resolveStages(
+    vendorId: string,
+  ): Promise<{ installed?: number; requested?: number; paid?: number }> {
+    const pid = this.config.vendorAmocrmPipelineId;
+    if (!pid) return {};
+    const env = {
+      installed: this.config.vendorAmocrmStatusInstalled,
+      requested: this.config.vendorAmocrmStatusRequested,
+      paid: this.config.vendorAmocrmStatusPaid,
+    };
+    if (env.installed || env.requested || env.paid) return env;
+    if (this.stagesCache) return this.stagesCache;
+    try {
+      const statuses = await this.amocrm.getPipelineStatuses(vendorId, pid);
+      const find = (kw: string): number | undefined =>
+        statuses.find((s) => (s.name || '').toLowerCase().includes(kw))?.id;
+      this.stagesCache = {
+        installed: find('установ'),
+        requested: find('счет') ?? find('счёт'),
+        paid: find('оплач'),
+      };
+      return this.stagesCache;
+    } catch (e) {
+      this.log.warn(`Не удалось получить этапы воронки ${pid}: ${String(e)}`);
+      return {};
+    }
   }
 
   private async clientSubdomain(clientAccountId: string): Promise<string> {

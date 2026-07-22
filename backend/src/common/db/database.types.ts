@@ -38,6 +38,8 @@ export interface AccountSettings {
   backend_url?: string;
   /** id сделки этого клиента в нашей (Ko:agency) amoCRM — ведём его по этапам биллинга. */
   vendor_lead_id?: string;
+  /** Подписка оплачена до (ISO). Пусто/в прошлом → демо-режим. */
+  paid_until?: string;
   [k: string]: unknown;
 }
 

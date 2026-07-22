@@ -58,6 +58,8 @@ export const envSchema = z.object({
   // ЮKassa (онлайн-оплата) — включается, когда заданы оба.
   YOOKASSA_SHOP_ID: z.string().optional(),
   YOOKASSA_SECRET_KEY: z.string().optional(),
+  // Куда ЮKassa вернёт пользователя после оплаты.
+  BILLING_RETURN_URL: z.string().url().optional(),
 
   DATABASE_URL_TEST: z.string().optional(),
 });

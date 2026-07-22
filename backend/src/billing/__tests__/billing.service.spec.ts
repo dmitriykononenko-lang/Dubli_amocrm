@@ -3,6 +3,7 @@ import { BillingService } from '../billing.service';
 import type { AppConfigService } from '../../config/app-config.service';
 import type { AmocrmService } from '../../amocrm/amocrm.service';
 import type { AccountsService } from '../../accounts/accounts.service';
+import type { YookassaClient } from '../yookassa.client';
 
 function make(
   configOverrides: Partial<Record<string, unknown>> = {},
@@ -26,6 +27,7 @@ function make(
     update: jest.fn().mockResolvedValue(undefined),
     addNote: jest.fn().mockResolvedValue(undefined),
     createTask: jest.fn().mockResolvedValue(undefined),
+    getPipelineStatuses: jest.fn().mockResolvedValue([]),
   } as unknown as AmocrmService;
   const accounts = {
     getSettings: jest.fn().mockResolvedValue({ ...settings }),
@@ -33,7 +35,17 @@ function make(
     findById: jest.fn().mockResolvedValue({ subdomain: 'clientco' }),
     findBySubdomain: jest.fn(),
   } as unknown as AccountsService;
-  return { svc: new BillingService(config, amocrm, accounts), amocrm, accounts };
+  const ykEnabled = Boolean(configOverrides.yookassaShopId && configOverrides.yookassaSecretKey);
+  const yookassa = {
+    enabled: ykEnabled,
+    createPayment: jest.fn().mockResolvedValue({
+      id: 'pay_1',
+      status: 'pending',
+      confirmation: { confirmation_url: 'https://yookassa.ru/checkout/pay_1' },
+    }),
+    getPayment: jest.fn(),
+  } as unknown as YookassaClient;
+  return { svc: new BillingService(config, amocrm, accounts, yookassa), amocrm, accounts, yookassa };
 }
 
 describe('BillingService — установка клиента', () => {
@@ -67,7 +79,10 @@ describe('BillingService — установка клиента', () => {
 
 describe('BillingService.requestInvoice', () => {
   it('двигает существующую сделку на этап, пишет сумму и ставит задачу', async () => {
-    const { svc, amocrm } = make({ vendorAmocrmStatusRequested: 222 }, { vendor_lead_id: '55501' });
+    const { svc, amocrm } = make(
+      { vendorAmocrmPipelineId: 11130042, vendorAmocrmStatusRequested: 222 },
+      { vendor_lead_id: '55501' },
+    );
     const res = await svc.requestInvoice('778', 8, 12);
     expect(res).toEqual({ ok: true, leadId: '55501', sum: 399 * 8 * 10 });
     expect(amocrm.create).not.toHaveBeenCalled();
@@ -108,9 +123,98 @@ describe('BillingService.requestInvoice', () => {
   });
 });
 
+describe('BillingService — этапы воронки по названию', () => {
+  const STAGES = [
+    { id: 101, name: 'ВИДЖЕТ УСТАНОВАЛЕН' },
+    { id: 102, name: 'КВАЛИФИЦИРОВАН' },
+    { id: 103, name: 'ЗАПРОШЕН СЧЕТ' },
+    { id: 104, name: 'ОПЛАЧЕН' },
+  ];
+
+  it('установка кладёт сделку на этап «установлен» (по названию, нужен только pipeline_id)', async () => {
+    const { svc, amocrm } = make({ vendorAmocrmPipelineId: 11130042 });
+    (amocrm.getPipelineStatuses as jest.Mock).mockResolvedValue(STAGES);
+    await svc.onClientInstalled('778');
+    expect(amocrm.create).toHaveBeenCalledWith(
+      '900',
+      'lead',
+      expect.objectContaining({ pipeline_id: 11130042, status_id: 101 }),
+    );
+  });
+
+  it('запрос счёта двигает сделку на этап «Запрошен счёт» (id 103)', async () => {
+    const { svc, amocrm } = make({ vendorAmocrmPipelineId: 11130042 }, { vendor_lead_id: '55501' });
+    (amocrm.getPipelineStatuses as jest.Mock).mockResolvedValue(STAGES);
+    await svc.requestInvoice('778', 5, 6);
+    expect(amocrm.update).toHaveBeenCalledWith(
+      '900',
+      'lead',
+      '55501',
+      expect.objectContaining({ status_id: 103 }),
+    );
+  });
+
+  it('явные ID из .env имеют приоритет над названиями', async () => {
+    const { svc, amocrm } = make(
+      { vendorAmocrmPipelineId: 11130042, vendorAmocrmStatusRequested: 777 },
+      { vendor_lead_id: '55501' },
+    );
+    (amocrm.getPipelineStatuses as jest.Mock).mockResolvedValue(STAGES);
+    await svc.requestInvoice('778', 5, 6);
+    expect(amocrm.getPipelineStatuses).not.toHaveBeenCalled();
+    expect(amocrm.update).toHaveBeenCalledWith(
+      '900',
+      'lead',
+      '55501',
+      expect.objectContaining({ status_id: 777 }),
+    );
+  });
+});
+
 describe('BillingService.createCheckout', () => {
   it('503, пока ЮKassa не настроена', async () => {
     const { svc } = make();
     await expect(svc.createCheckout('778', 5, 6)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('создаёт платёж ЮKassa и возвращает ссылку на оплату', async () => {
+    const { svc, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
+    const res = await svc.createCheckout('778', 5, 6);
+    expect(res).toEqual({ confirmation_url: 'https://yookassa.ru/checkout/pay_1', sum: 11970 });
+    expect(yookassa.createPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 11970,
+        metadata: expect.objectContaining({ accountId: '778', months: 6 }),
+      }),
+    );
+  });
+});
+
+describe('BillingService.handlePaymentNotification', () => {
+  it('успешный платёж → продлевает подписку и двигает сделку на «Оплачен»', async () => {
+    const { svc, amocrm, accounts, yookassa } = make(
+      { yookassaShopId: 's', yookassaSecretKey: 'k', vendorAmocrmPipelineId: 11130042 },
+      { vendor_lead_id: '55501' },
+    );
+    (yookassa.getPayment as jest.Mock).mockResolvedValue({
+      id: 'pay_1',
+      status: 'succeeded',
+      metadata: { accountId: '778', months: 6 },
+    });
+    (amocrm.getPipelineStatuses as jest.Mock).mockResolvedValue([{ id: 104, name: 'ОПЛАЧЕН' }]);
+    await svc.handlePaymentNotification('pay_1');
+    expect(accounts.updateSettings).toHaveBeenCalledWith(
+      '778',
+      expect.objectContaining({ paid_until: expect.any(String) }),
+    );
+    expect(amocrm.update).toHaveBeenCalledWith('900', 'lead', '55501', { status_id: 104 });
+    expect(amocrm.addNote).toHaveBeenCalledWith('900', 'lead', '55501', expect.stringContaining('Оплата'));
+  });
+
+  it('неуспешный платёж → ничего не меняет', async () => {
+    const { svc, accounts, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
+    (yookassa.getPayment as jest.Mock).mockResolvedValue({ id: 'pay_1', status: 'pending', metadata: { accountId: '778' } });
+    await svc.handlePaymentNotification('pay_1');
+    expect(accounts.updateSettings).not.toHaveBeenCalled();
   });
 });

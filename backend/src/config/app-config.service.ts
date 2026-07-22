@@ -83,4 +83,7 @@ export class AppConfigService {
   get yookassaSecretKey(): string | undefined {
     return this.get('YOOKASSA_SECRET_KEY');
   }
+  get billingReturnUrl(): string | undefined {
+    return this.get('BILLING_RETURN_URL');
+  }
 }

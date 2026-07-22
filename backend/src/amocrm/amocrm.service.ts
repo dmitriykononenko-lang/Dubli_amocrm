@@ -165,6 +165,18 @@ export class AmocrmService {
     ]);
   }
 
+  /** Этапы воронки (id + название) — для резолва статусов по имени. */
+  async getPipelineStatuses(
+    accountId: string,
+    pipelineId: number,
+  ): Promise<Array<{ id: number; name: string }>> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const res = await this.http.apiGet<{
+      _embedded?: { statuses?: Array<{ id: number; name: string }> };
+    }>(subdomain, accountId, `/api/v4/leads/pipelines/${pipelineId}`, accessToken);
+    return res?._embedded?.statuses ?? [];
+  }
+
   /** Резолв subdomain + валидного access-токена для аккаунта. */
   private async ctx(accountId: string): Promise<{ subdomain: string; accessToken: string }> {
     const account = await this.accounts.findById(accountId);
