@@ -3,7 +3,7 @@
     "name": "widget.name",
     "description": "widget.description",
     "short_description": "widget.short_description",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "interface_version": 2,
     "init_once": false,
     "locale": ["ru", "en"],
@@ -15,7 +15,8 @@
     }
   },
   "locations": [
-    "settings"
+    "settings",
+    "advanced_settings"
   ],
   "settings": {
     "backend_url": {
@@ -27,6 +28,18 @@
       "name": "settings.security_key",
       "type": "text",
       "required": false
+    }
+  },
+  "advanced": {
+    "default_entity": {
+      "name": "advanced.default_entity",
+      "type": "list",
+      "values": {
+        "contact": "settings.contacts",
+        "company": "settings.companies",
+        "lead": "settings.leads"
+      },
+      "default": "contact"
     }
   }
 }

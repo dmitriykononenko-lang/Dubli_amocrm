@@ -1098,9 +1098,14 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       advancedSettings: function () {
-        renderSettings($('.dub-advanced-settings-anchor').length
-          ? $('.dub-advanced-settings-anchor')
-          : $(document.body));
+        // Полноэкранная страница «Расширенные настройки» внутри виджета: монтируемся в
+        // контейнер amoCRM (селектор зависит от версии), с запасными вариантами.
+        // renderSettings делает prepend, а не .html(), поэтому body не затирается.
+        var $mount = $(
+          '.widget_advanced_settings, .list-pipelines__hidden, .dub-advanced-settings-anchor',
+        ).first();
+        if (!$mount.length) $mount = $(document.body);
+        renderSettings($mount);
         return true;
       }
     };

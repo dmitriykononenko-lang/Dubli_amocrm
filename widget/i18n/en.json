@@ -74,6 +74,9 @@
     "merge_done": "Duplicates merged",
     "merge_failed": "Merge failed"
   },
+  "advanced": {
+    "default_entity": "Default entity in “Found duplicates”"
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",
