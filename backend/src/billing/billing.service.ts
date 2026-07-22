@@ -1,4 +1,9 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { AmocrmService } from '../amocrm/amocrm.service';
 import { AccountsService } from '../accounts/accounts.service';
@@ -90,6 +95,7 @@ export class BillingService {
     clientAccountId: string,
     users: number,
     months: number,
+    email?: string,
   ): Promise<{ confirmation_url: string; sum: number }> {
     const q = this.quote(users, months);
     if (!this.yookassa.enabled) {
@@ -99,11 +105,34 @@ export class BillingService {
     }
     const clientSub = await this.clientSubdomain(clientAccountId);
     const returnUrl = this.config.billingReturnUrl ?? 'https://dubli.koagency.ru';
+    const description = `Подписка «Дубли»: ${q.users} польз. × ${q.months} мес`;
+
+    // Чек (54-ФЗ): при фискализации ЮKassa обязателен объект receipt с позицией и email.
+    let receipt: Record<string, unknown> | undefined;
+    if (this.config.yookassaFiscal) {
+      const em = (email ?? '').trim();
+      if (!em) throw new BadRequestException('Для чека (54-ФЗ) нужен email покупателя');
+      receipt = {
+        customer: { email: em },
+        items: [
+          {
+            description: description.slice(0, 128),
+            quantity: '1.00',
+            amount: { value: q.sum.toFixed(2), currency: 'RUB' },
+            vat_code: this.config.yookassaVatCode,
+            payment_subject: 'service',
+            payment_mode: 'full_payment',
+          },
+        ],
+      };
+    }
+
     const payment = await this.yookassa.createPayment({
       amount: q.sum,
-      description: `Дубли: подписка ${q.users} польз. × ${q.months} мес (${clientSub})`,
+      description: `${description} (${clientSub})`,
       returnUrl,
       metadata: { accountId: clientAccountId, users: q.users, months: q.months },
+      receipt,
     });
     const url = payment.confirmation?.confirmation_url;
     if (!url) throw new ServiceUnavailableException('ЮKassa не вернула ссылку на оплату');

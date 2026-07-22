@@ -6,6 +6,7 @@ import { BillingService } from './billing.service';
 interface CheckoutBody {
   users?: number;
   months?: number;
+  email?: string;
 }
 
 /**
@@ -31,6 +32,11 @@ export class BillingController {
 
   @Post('checkout')
   checkout(@AccountId() accountId: string, @Body() body: CheckoutBody) {
-    return this.billing.createCheckout(accountId, Number(body?.users), Number(body?.months));
+    return this.billing.createCheckout(
+      accountId,
+      Number(body?.users),
+      Number(body?.months),
+      body?.email,
+    );
   }
 }

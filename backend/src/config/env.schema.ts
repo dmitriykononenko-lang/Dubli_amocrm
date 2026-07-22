@@ -15,6 +15,14 @@ const envBool = z.preprocess((v) => {
   return v; // прочее — отдать z.boolean(), пусть падает с понятной ошибкой
 }, z.boolean());
 
+/**
+ * Пустая строка из .env / docker-compose (напр. `VAR=`) → undefined, чтобы сработал
+ * .default() и не падала .optional()-валидация (z.coerce.number('') = 0 иначе ломает).
+ */
+function emptyable<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((v) => (v === '' ? undefined : v), schema);
+}
+
 /** Схема переменных окружения. Приложение не стартует при невалидной конфигурации. */
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -44,22 +52,27 @@ export const envSchema = z.object({
   SCAN_POLL_MS: z.coerce.number().int().min(0).default(2000),
 
   // --- Биллинг / оплата (Этап 2) ---
-  BILLING_PRICE_PER_USER: z.coerce.number().positive().default(399),
-  BILLING_MIN_USERS: z.coerce.number().int().positive().default(5),
+  BILLING_PRICE_PER_USER: emptyable(z.coerce.number().positive().default(399)),
+  BILLING_MIN_USERS: emptyable(z.coerce.number().int().positive().default(5)),
   // Аккаунт amoCRM Ko:agency, куда падают счёт-сделки. Достаточно указать один из:
   VENDOR_AMOCRM_ACCOUNT_ID: z.string().optional(),
   VENDOR_AMOCRM_SUBDOMAIN: z.string().optional(),
   // Выделенная воронка «Дубли — клиенты» и её этапы (необязательно; без них — сделка
   // создаётся в главной воронке без переходов по этапам, но примечания/задачи пишутся).
-  VENDOR_AMOCRM_PIPELINE_ID: z.coerce.number().int().positive().optional(),
-  VENDOR_AMOCRM_STATUS_INSTALLED: z.coerce.number().int().positive().optional(),
-  VENDOR_AMOCRM_STATUS_REQUESTED: z.coerce.number().int().positive().optional(),
-  VENDOR_AMOCRM_STATUS_PAID: z.coerce.number().int().positive().optional(),
+  VENDOR_AMOCRM_PIPELINE_ID: emptyable(z.coerce.number().int().positive().optional()),
+  VENDOR_AMOCRM_STATUS_INSTALLED: emptyable(z.coerce.number().int().positive().optional()),
+  VENDOR_AMOCRM_STATUS_REQUESTED: emptyable(z.coerce.number().int().positive().optional()),
+  VENDOR_AMOCRM_STATUS_PAID: emptyable(z.coerce.number().int().positive().optional()),
   // ЮKassa (онлайн-оплата) — включается, когда заданы оба.
   YOOKASSA_SHOP_ID: z.string().optional(),
   YOOKASSA_SECRET_KEY: z.string().optional(),
   // Куда ЮKassa вернёт пользователя после оплаты.
-  BILLING_RETURN_URL: z.string().url().optional(),
+  BILLING_RETURN_URL: emptyable(z.string().url().optional()),
+  // Фискализация (54-ФЗ): при true в платёж добавляется чек (receipt) с позицией и
+  // email покупателя. Магазины с онлайн-кассой без чека возвращают 400.
+  YOOKASSA_FISCAL: emptyable(envBool.default(true)),
+  // Ставка НДС в чеке: 1 = без НДС (УСН), 2 = 0%, 3 = 10%, 4 = 20%, 5 = 10/110, 6 = 20/120.
+  YOOKASSA_VAT_CODE: emptyable(z.coerce.number().int().min(1).max(6).default(1)),
 
   DATABASE_URL_TEST: z.string().optional(),
 });

@@ -86,4 +86,10 @@ export class AppConfigService {
   get billingReturnUrl(): string | undefined {
     return this.get('BILLING_RETURN_URL');
   }
+  get yookassaFiscal(): boolean {
+    return this.get('YOOKASSA_FISCAL');
+  }
+  get yookassaVatCode(): number {
+    return this.get('YOOKASSA_VAT_CODE');
+  }
 }

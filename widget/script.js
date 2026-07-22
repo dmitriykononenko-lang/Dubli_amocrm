@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.3';
+    var WIDGET_BUILD = '2026-07-22.4';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -772,6 +772,16 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
     }
 
+    // Email текущего пользователя amoCRM для предзаполнения чека (если доступен).
+    function currentUserEmail() {
+      try {
+        var u = (typeof AMOCRM !== 'undefined' && AMOCRM.constant) ? AMOCRM.constant('user') || {} : {};
+        return u.email || u.login || '';
+      } catch (e) {
+        return '';
+      }
+    }
+
     // Расчёт подписки (для показа; авторитетный расчёт — на бэкенде при оплате).
     function calcPaySum(users, planId) {
       var u = Math.max(BILLING.minUsers, parseInt(users, 10) || 0);
@@ -817,6 +827,10 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '<div class="dub-pay__plans">' + payPlanCardsHtml(calc.users, activeId) + '</div>' +
         '<div class="dub-pay__total"><span>' + escapeHtml(t('settings.pay_sum', 'Сумма')) +
           '</span><b class="dub-pay__sum">' + fmtMoney(calc.sum) + '</b></div>' +
+        '<div class="dub-pay__row"><span class="dub-pay__label">' +
+          escapeHtml(t('settings.pay_email', 'Email для чека')) + '</span>' +
+          '<input type="email" class="dub-pay__email" placeholder="you@example.com" value="' +
+          escapeHtml(currentUserEmail()) + '"></div>' +
         '<div class="dub-pay__actions">' +
           '<button type="button" class="dub__btn dub__btn_primary dub-pay__online">' +
             escapeHtml(t('settings.pay_online', 'Оплатить онлайн')) + '</button>' +
@@ -1294,7 +1308,12 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var $root = $('.dub-settings');
       var planId = $root.find('.dub-pay__plan:checked').val() || BILLING.plans[0].id;
       var calc = calcPaySum($root.find('.dub-pay__users').val(), planId);
-      apiCall('POST', '/api/billing/checkout', { users: calc.users, months: calc.plan.months },
+      var email = String($root.find('.dub-pay__email').val() || '').trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        showToast(t('settings.pay_email_required', 'Укажите корректный email для чека'), true);
+        return;
+      }
+      apiCall('POST', '/api/billing/checkout', { users: calc.users, months: calc.plan.months, email: email },
         function (resp) {
           if (resp && resp.confirmation_url) { window.location.href = resp.confirmation_url; }
           else { showToast(t('settings.pay_soon', 'Онлайн-оплата скоро будет доступна')); }

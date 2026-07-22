@@ -33,7 +33,17 @@ export class YookassaClient {
     description: string;
     returnUrl: string;
     metadata: Record<string, unknown>;
+    receipt?: Record<string, unknown>;
   }): Promise<YkPayment> {
+    const body: Record<string, unknown> = {
+      amount: { value: input.amount.toFixed(2), currency: 'RUB' },
+      capture: true,
+      confirmation: { type: 'redirect', return_url: input.returnUrl },
+      description: input.description.slice(0, 128),
+      metadata: input.metadata,
+    };
+    // Чек (54-ФЗ) — обязателен для магазинов с фискализацией.
+    if (input.receipt) body.receipt = input.receipt;
     const res = await fetch('https://api.yookassa.ru/v3/payments', {
       method: 'POST',
       headers: {
@@ -41,13 +51,7 @@ export class YookassaClient {
         'Idempotence-Key': randomUUID(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        amount: { value: input.amount.toFixed(2), currency: 'RUB' },
-        capture: true,
-        confirmation: { type: 'redirect', return_url: input.returnUrl },
-        description: input.description.slice(0, 128),
-        metadata: input.metadata,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`ЮKassa createPayment ${res.status}: ${await res.text()}`);
     return (await res.json()) as YkPayment;

@@ -25,6 +25,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Пробрасываем весь .env в контейнер (биллинг/ЮKassa/vendor-amoCRM и пр.).
+    # Значения ниже в environment имеют приоритет над одноимёнными из .env.
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: '3000'

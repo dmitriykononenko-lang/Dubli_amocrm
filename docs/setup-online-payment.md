@@ -30,9 +30,14 @@
 В `.env` рядом с бэкендом `dubli` добавить/заполнить:
 
 ```dotenv
-YOOKASSA_SHOP_ID=<shopId из ЮKassa>
+YOOKASSA_SHOP_ID=<shopId из ЮKassa>               # напр. 1175639
 YOOKASSA_SECRET_KEY=<секретный ключ из ЮKassa>
 BILLING_RETURN_URL=https://dubli.koagency.ru      # куда вернуть после оплаты
+
+# Фискализация (54-ФЗ). Магазин с онлайн-кассой → true (иначе ЮKassa вернёт 400
+# «Receipt is missing»). Email покупателя вводится на вкладке «Оплата».
+YOOKASSA_FISCAL=true
+YOOKASSA_VAT_CODE=1                                # 1 = без НДС (УСН). Подтвердить у владельца!
 
 # для перевода сделки клиента на «Оплачен» в нашей amoCRM:
 VENDOR_AMOCRM_SUBDOMAIN=koagency.amocrm.ru
@@ -43,7 +48,8 @@ BILLING_PRICE_PER_USER=399
 BILLING_MIN_USERS=5
 ```
 
-Секреты держать только в `.env` (в git не коммитить).
+Секреты держать только в `.env` (в git не коммитить). Все переменные из `.env`
+пробрасываются в контейнер backend автоматически (`env_file` в docker-compose.yml).
 
 ## Шаг 3. Настроить вебхук в ЮKassa
 

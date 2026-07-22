@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { BillingService } from '../billing.service';
 import type { AppConfigService } from '../../config/app-config.service';
 import type { AmocrmService } from '../../amocrm/amocrm.service';
@@ -20,6 +20,9 @@ function make(
     vendorAmocrmStatusPaid: undefined,
     yookassaShopId: undefined,
     yookassaSecretKey: undefined,
+    yookassaFiscal: false,
+    yookassaVatCode: 1,
+    billingReturnUrl: undefined,
     ...configOverrides,
   } as unknown as AppConfigService;
   const amocrm = {
@@ -177,7 +180,7 @@ describe('BillingService.createCheckout', () => {
     await expect(svc.createCheckout('778', 5, 6)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
-  it('создаёт платёж ЮKassa и возвращает ссылку на оплату', async () => {
+  it('создаёт платёж ЮKassa и возвращает ссылку на оплату (без фискализации)', async () => {
     const { svc, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
     const res = await svc.createCheckout('778', 5, 6);
     expect(res).toEqual({ confirmation_url: 'https://yookassa.ru/checkout/pay_1', sum: 11970 });
@@ -187,6 +190,25 @@ describe('BillingService.createCheckout', () => {
         metadata: expect.objectContaining({ accountId: '778', months: 6 }),
       }),
     );
+  });
+
+  it('с фискализацией добавляет чек (receipt) с email и суммой позиции = сумме', async () => {
+    const { svc, yookassa } = make({
+      yookassaShopId: 's',
+      yookassaSecretKey: 'k',
+      yookassaFiscal: true,
+      yookassaVatCode: 1,
+    });
+    await svc.createCheckout('778', 5, 6, 'buyer@example.com');
+    const arg = (yookassa.createPayment as jest.Mock).mock.calls[0][0];
+    expect(arg.receipt.customer.email).toBe('buyer@example.com');
+    expect(arg.receipt.items[0].amount).toEqual({ value: '11970.00', currency: 'RUB' });
+    expect(arg.receipt.items[0].vat_code).toBe(1);
+  });
+
+  it('с фискализацией без email → 400 (нужен email для чека)', async () => {
+    const { svc } = make({ yookassaShopId: 's', yookassaSecretKey: 'k', yookassaFiscal: true });
+    await expect(svc.createCheckout('778', 5, 6)).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 

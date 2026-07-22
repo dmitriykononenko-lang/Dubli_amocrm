@@ -102,7 +102,9 @@
     "pay_invoice": "Request invoice",
     "pay_invoice_sent": "Invoice requested — our manager will contact you",
     "pay_soon": "Online payment coming soon",
-    "pay_failed": "Couldn't send the request"
+    "pay_failed": "Couldn't send the request",
+    "pay_email": "Email for the receipt",
+    "pay_email_required": "Enter a valid email for the receipt"
   },
   "advanced": {
     "title": "Duplicates: cleanup & merge"

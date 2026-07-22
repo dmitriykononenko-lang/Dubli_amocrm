@@ -769,9 +769,17 @@ section('Оплата: калькулятор тарифа, онлайн-опл�
   const invBody = JSON.parse(inv.data || '{}');
   assert(invBody.users === 8 && invBody.months === 12, 'в теле счёта users=8, months=12');
 
+  // без email чек невозможен → POST не уходит
+  $b.find('.dub-pay__email').val('');
   $b.find('.dub-pay__online').trigger('click');
-  assert(ajaxCalls.some((c) => c.method === 'POST' && /\/api\/billing\/checkout/.test(c.url)),
-    'выполнен POST /api/billing/checkout');
+  assert(!ajaxCalls.some((c) => /\/api\/billing\/checkout/.test(c.url)), 'без email checkout не вызывается');
+
+  // с корректным email → POST /api/billing/checkout с email в теле
+  $b.find('.dub-pay__email').val('buyer@example.com');
+  $b.find('.dub-pay__online').trigger('click');
+  const co = ajaxCalls.find((c) => c.method === 'POST' && /\/api\/billing\/checkout/.test(c.url));
+  assert(!!co, 'выполнен POST /api/billing/checkout');
+  assert(JSON.parse(co.data || '{}').email === 'buyer@example.com', 'email передан в тело checkout');
 
   widget.callbacks.destroy();
   $b.remove();
