@@ -3,7 +3,7 @@
     "name": "widget.name",
     "description": "widget.description",
     "short_description": "widget.short_description",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "interface_version": 2,
     "init_once": false,
     "locale": ["ru", "en"],
@@ -31,15 +31,6 @@
     }
   },
   "advanced": {
-    "default_entity": {
-      "name": "advanced.default_entity",
-      "type": "list",
-      "values": {
-        "contact": "settings.contacts",
-        "company": "settings.companies",
-        "lead": "settings.leads"
-      },
-      "default": "contact"
-    }
+    "title": "advanced.title"
   }
 }

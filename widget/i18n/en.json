@@ -75,7 +75,7 @@
     "merge_failed": "Merge failed"
   },
   "advanced": {
-    "default_entity": "Default entity in “Found duplicates”"
+    "title": "Duplicates: cleanup & merge"
   },
   "common": {
     "save": "Save",
