@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.6';
+    var WIDGET_BUILD = '2026-07-22.7';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -130,8 +130,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub__btn{flex:1;box-sizing:border-box;padding:8px 10px;border:1px solid #d4d7da;border-radius:3px;background:#fff;color:#313942;font-size:13px;cursor:pointer;text-align:center}',
         '.dub__btn:hover:not(:disabled){background:#f5f6f7}',
         '.dub__btn:disabled{opacity:.5;cursor:default}',
-        '.dub__btn_primary{background:#e11b22;border-color:#e11b22;color:#fff}',
-        '.dub__btn_primary:hover:not(:disabled){background:#c1141b;border-color:#c1141b}',
+        '.dub__btn_primary{background:#d22730;border-color:#d22730;color:#fff}',
+        '.dub__btn_primary:hover:not(:disabled){background:#b31f27;border-color:#b31f27}',
         /* всплывающее уведомление */
         '.dub-toast{position:fixed;left:20px;bottom:20px;max-width:480px;z-index:999999;background:#313942;color:#fff;padding:10px 16px;border-radius:4px;font-size:13px;line-height:18px;opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s}',
         '.dub-toast_visible{opacity:1;transform:translateY(0)}',
@@ -206,59 +206,59 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-adv_wide{max-width:1080px;margin:32px auto 56px;padding:0 20px}',
         /* ===== фирменная тема Ko:agency (красный акцент) ===== */
         '.dub-ko__head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 16px}',
-        '.dub-ko__brand{font-size:13px;font-weight:700;color:#26313e;letter-spacing:.2px}',
+        '.dub-ko__brand{font-size:13px;font-weight:700;color:#141414;letter-spacing:.2px}',
         '.dub-ko__brand span{color:#98a0a8;font-weight:400}',
         '.dub-ko__act{display:flex;align-items:center;gap:12px;flex:0 0 auto}',
         '.dub-ko__act .dub__btn{flex:0 0 auto;padding:8px 22px;font-weight:600}',
         /* верхние вкладки */
         '.dub-tabs{display:flex;gap:2px;border-bottom:1px solid #e7e9ec;margin-bottom:18px;flex-wrap:wrap}',
         '.dub-tab{-webkit-appearance:none;appearance:none;border:0;background:none;padding:10px 16px;font-size:14px;font-weight:600;color:#7b828b;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}',
-        '.dub-tab:hover{color:#26313e}',
-        '.dub-tab_active{color:#e11b22;border-bottom-color:#e11b22}',
+        '.dub-tab:hover{color:#141414}',
+        '.dub-tab_active{color:#d22730;border-bottom-color:#d22730}',
         '.dub-pane{display:none}',
         '.dub-pane_active{display:block}',
         /* под-вкладки (сегмент-контрол) */
         '.dub-subtabs{display:inline-flex;gap:3px;margin-bottom:16px;background:#f2f3f5;padding:3px;border-radius:9px}',
         '.dub-subtab{-webkit-appearance:none;appearance:none;border:0;background:none;padding:7px 14px;font-size:13px;font-weight:600;color:#7b828b;cursor:pointer;border-radius:6px}',
-        '.dub-subtab:hover{color:#26313e}',
-        '.dub-subtab_active{background:#fff;color:#e11b22;box-shadow:0 1px 2px rgba(38,49,62,.1)}',
+        '.dub-subtab:hover{color:#141414}',
+        '.dub-subtab_active{background:#fff;color:#d22730;box-shadow:0 1px 2px rgba(38,49,62,.1)}',
         '.dub-subpane{display:none}',
         '.dub-subpane_active{display:block}',
         /* карточка-секция */
         '.dub-card{border:1px solid #e7e9ec;border-radius:10px;padding:16px 18px;margin-bottom:14px;background:#fff}',
-        '.dub-card__title{font-size:15px;font-weight:700;color:#26313e;margin-bottom:6px}',
+        '.dub-card__title{font-size:15px;font-weight:700;color:#141414;margin-bottom:6px}',
         '.dub-card__hint{font-size:12px;color:#98a0a8;line-height:1.5;margin-bottom:12px}',
         /* тумблер-переключатель */
-        '.dub-switch{display:flex;align-items:center;gap:14px;padding:11px 2px;cursor:pointer;font-size:14px;color:#26313e;margin:0}',
+        '.dub-switch{display:flex;align-items:center;gap:14px;padding:11px 2px;cursor:pointer;font-size:14px;color:#141414;margin:0}',
         '.dub-switch+.dub-switch{border-top:1px solid #f0f1f3}',
         '.dub-switch__text{flex:1;min-width:0}',
         '.dub-switch__text b{font-weight:600}',
         '.dub-switch input{position:absolute;opacity:0;width:0;height:0}',
         '.dub-switch__track{position:relative;flex:0 0 auto;width:40px;height:23px;border-radius:23px;background:#cfd4da;transition:background .2s}',
         '.dub-switch__thumb{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}',
-        '.dub-switch input:checked+.dub-switch__track{background:#e11b22}',
+        '.dub-switch input:checked+.dub-switch__track{background:#d22730}',
         '.dub-switch input:checked+.dub-switch__track .dub-switch__thumb{transform:translateX(17px)}',
         '.dub-auto__meta{color:#98a0a8;font-size:12px;font-weight:400}',
         /* вкладка «Оплата» */
         '.dub-pay__status{font-size:13px;font-weight:600;color:#8a919a;margin-bottom:6px}',
         '.dub-pay__status_ok{color:#1f9d57}',
         '.dub-pay__rate{font-size:13px;color:#98a0a8;flex:0 0 auto}',
-        '.dub-pay__line{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:#26313e;margin-bottom:16px;flex-wrap:wrap}',
+        '.dub-pay__line{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;color:#141414;margin-bottom:16px;flex-wrap:wrap}',
         '.dub-pay__row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}',
-        '.dub-pay__label{font-size:14px;color:#26313e}',
+        '.dub-pay__label{font-size:14px;color:#141414}',
         '.dub-pay__users{width:64px;padding:6px 8px;border:1px solid #d4d7da;border-radius:6px;font-size:14px;text-align:center;box-sizing:border-box;display:inline-block;vertical-align:middle;margin:0 4px}',
         '.dub-pay__plans{display:flex;gap:12px;margin-bottom:6px;flex-wrap:wrap}',
         '.dub-plan{flex:1 1 160px;min-width:150px;border:2px solid #e7e9ec;border-radius:10px;padding:14px;cursor:pointer;text-align:center;display:flex;flex-direction:column;gap:4px;position:relative}',
         '.dub-plan:hover{border-color:#cfd4da}',
-        '.dub-plan_active{border-color:#e11b22}',
+        '.dub-plan_active{border-color:#d22730}',
         '.dub-plan input{position:absolute;opacity:0;width:0;height:0}',
-        '.dub-plan__months{font-size:15px;font-weight:700;color:#26313e}',
-        '.dub-plan__bonus{font-size:12px;color:#e11b22;min-height:16px}',
-        '.dub-plan__sum{font-size:14px;color:#26313e;margin-top:2px}',
+        '.dub-plan__months{font-size:15px;font-weight:700;color:#141414}',
+        '.dub-plan__bonus{font-size:12px;color:#d22730;min-height:16px}',
+        '.dub-plan__sum{font-size:14px;color:#141414;margin-top:2px}',
         '.dub-pay__total{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid #f0f1f3;margin-top:8px;margin-bottom:14px}',
-        '.dub-pay__total b{font-size:22px;color:#26313e}',
+        '.dub-pay__total b{font-size:22px;color:#141414}',
         '.dub-pay__actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}',
-        '.dub-pay__actions .dub-pay__sum{font-size:20px;font-weight:700;color:#26313e;margin-right:auto}',
+        '.dub-pay__actions .dub-pay__sum{font-size:20px;font-weight:700;color:#141414;margin-right:auto}',
         '.dub-pay__actions .dub__btn{flex:0 0 auto;padding:10px 24px;font-weight:600}'
       ].join('');
       var styleEl = document.createElement('style');
@@ -855,6 +855,9 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           escapeHtml(t('settings.pay_email', 'Email для чека')) + '</span>' +
           '<input type="email" class="dub-pay__email" placeholder="you@example.com" value="' +
           escapeHtml(currentUserEmail()) + '"></div>' +
+        '<div class="dub-pay__row"><span class="dub-pay__label">' +
+          escapeHtml(t('settings.pay_phone', 'Телефон для связи')) + '</span>' +
+          '<input type="tel" class="dub-pay__phone" placeholder="+7 999 000-00-00" value=""></div>' +
         '<div class="dub-pay__actions">' +
           '<b class="dub-pay__sum">' + fmtMoney(calc.sum) + '</b>' +
           '<button type="button" class="dub__btn dub__btn_primary dub-pay__online">' +
@@ -1338,7 +1341,10 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         showToast(t('settings.pay_email_required', 'Укажите корректный email для чека'), true);
         return;
       }
-      apiCall('POST', '/api/billing/checkout', { users: calc.users, months: calc.plan.months, email: email },
+      apiCall('POST', '/api/billing/checkout', {
+        users: calc.users, months: calc.plan.months, email: email,
+        phone: String($root.find('.dub-pay__phone').val() || '').trim()
+      },
         function (resp) {
           if (resp && resp.confirmation_url) { window.location.href = resp.confirmation_url; }
           else { showToast(t('settings.pay_soon', 'Онлайн-оплата скоро будет доступна')); }
@@ -1350,7 +1356,13 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var $root = $('.dub-settings');
       var planId = $root.find('.dub-pay__plan:checked').val() || BILLING.plans[0].id;
       var calc = calcPaySum($root.find('.dub-pay__users').val(), planId);
-      apiCall('POST', '/api/billing/invoice-request', { users: calc.users, months: calc.plan.months },
+      var body = {
+        users: calc.users,
+        months: calc.plan.months,
+        phone: String($root.find('.dub-pay__phone').val() || '').trim(),
+        email: String($root.find('.dub-pay__email').val() || '').trim()
+      };
+      apiCall('POST', '/api/billing/invoice-request', body,
         function () { showToast(t('settings.pay_invoice_sent', 'Счёт запрошен — менеджер свяжется с вами')); },
         function (xhr) { showToast(apiErrText(xhr, t('settings.pay_failed', 'Не удалось отправить запрос')), true); });
     }

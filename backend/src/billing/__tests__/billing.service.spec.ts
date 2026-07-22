@@ -111,6 +111,15 @@ describe('BillingService.requestInvoice', () => {
     );
   });
 
+  it('кладёт телефон/email клиента в примечание и задачу', async () => {
+    const { svc, amocrm } = make({ vendorAmocrmPipelineId: 11130042 }, { vendor_lead_id: '55501' });
+    await svc.requestInvoice('778', 5, 6, { phone: '+79990001122', email: 'c@x.ru' });
+    const note = (amocrm.addNote as jest.Mock).mock.calls.find((c) => /Запросил счёт/.test(c[3]));
+    expect(note[3]).toContain('+79990001122');
+    expect(note[3]).toContain('c@x.ru');
+    expect((amocrm.createTask as jest.Mock).mock.calls[0][1].text).toContain('+79990001122');
+  });
+
   it('заводит сделку, если запрос счёта пришёл раньше факта установки', async () => {
     const { svc, amocrm } = make();
     await svc.requestInvoice('778', 5, 6);

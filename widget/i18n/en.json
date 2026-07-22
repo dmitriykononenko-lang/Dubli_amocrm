@@ -107,7 +107,8 @@
     "pay_email_required": "Enter a valid email for the receipt",
     "pay_for": "For",
     "pay_users_word": "amoCRM users",
-    "pay_per_month": "₽/mo"
+    "pay_per_month": "₽/mo",
+    "pay_phone": "Contact phone"
   },
   "advanced": {
     "title": "Duplicates: cleanup & merge"

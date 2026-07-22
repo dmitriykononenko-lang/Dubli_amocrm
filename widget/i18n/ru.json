@@ -107,7 +107,8 @@
     "pay_email_required": "Укажите корректный email для чека",
     "pay_for": "За",
     "pay_users_word": "пользователей amoCRM",
-    "pay_per_month": "₽/мес"
+    "pay_per_month": "₽/мес",
+    "pay_phone": "Телефон для связи"
   },
   "advanced": {
     "title": "Дубли: чистка и объединение"

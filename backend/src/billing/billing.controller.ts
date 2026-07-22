@@ -7,6 +7,7 @@ interface CheckoutBody {
   users?: number;
   months?: number;
   email?: string;
+  phone?: string;
 }
 
 /**
@@ -27,7 +28,10 @@ export class BillingController {
 
   @Post('invoice-request')
   invoice(@AccountId() accountId: string, @Body() body: CheckoutBody) {
-    return this.billing.requestInvoice(accountId, Number(body?.users), Number(body?.months));
+    return this.billing.requestInvoice(accountId, Number(body?.users), Number(body?.months), {
+      phone: body?.phone,
+      email: body?.email,
+    });
   }
 
   @Post('checkout')

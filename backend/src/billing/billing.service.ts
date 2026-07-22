@@ -54,6 +54,7 @@ export class BillingService {
     clientAccountId: string,
     users: number,
     months: number,
+    contact?: { phone?: string; email?: string },
   ): Promise<{ ok: true; leadId: string; sum: number }> {
     const q = this.quote(users, months);
     const vendorId = await this.resolveVendorAccountId();
@@ -71,6 +72,13 @@ export class BillingService {
     if (stages.requested) patch.status_id = stages.requested;
     await this.amocrm.update(vendorId, 'lead', dealId, patch);
 
+    // Контакт клиента (телефон/email — amoCRM их не отдаёт автоматически, приходят из виджета).
+    const phone = (contact?.phone ?? '').trim();
+    const email = (contact?.email ?? '').trim();
+    const contactLine = [phone && `тел: ${phone}`, email && `email: ${email}`]
+      .filter(Boolean)
+      .join(' · ');
+
     // Примечание и задача — обогащение, не должны ронять запрос счёта.
     await this.best(
       () =>
@@ -78,7 +86,8 @@ export class BillingService {
           vendorId,
           'lead',
           dealId,
-          `Запросил счёт: ${q.sum} ₽ (${q.users} польз. × ${q.months} мес)`,
+          `Запросил счёт: ${q.sum} ₽ (${q.users} польз. × ${q.months} мес)` +
+            (contactLine ? `\nКонтакт: ${contactLine}` : ''),
         ),
       'addNote(requested)',
     );
@@ -87,7 +96,7 @@ export class BillingService {
         this.amocrm.createTask(vendorId, {
           entityType: 'lead',
           entityId: dealId,
-          text: `Выставить счёт клиенту ${clientSub}: ${q.sum} ₽`,
+          text: `Выставить счёт клиенту ${clientSub}: ${q.sum} ₽` + (phone ? ` · тел ${phone}` : ''),
         }),
       'createTask(invoice)',
     );
