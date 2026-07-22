@@ -2,7 +2,7 @@
   "widget": {
     "name": "Duplicate Finder & Merge",
     "short_description": "Find and merge duplicate contacts, companies and leads",
-    "description": "The widget finds and merges duplicate contacts, companies and leads in amoCRM. Flexible search rules (field combinations with AND/OR), value normalization (phones, emails, names), duplicate checks while working in a card and prevention of new duplicates. This is a scaffold (stage 2): a frontend widget with no business logic; search, merge and the backend will arrive in the next stage."
+    "description": "The widget finds and merges duplicate contacts, companies and leads in amoCRM. Works from settings: flexible search rules (field combinations with AND/OR), value normalization (phones, emails, tax IDs, names), mass base cleanup, automatic rule-based merging and a duplicate warning on save."
   },
   "card": {
     "title": "Duplicates",
