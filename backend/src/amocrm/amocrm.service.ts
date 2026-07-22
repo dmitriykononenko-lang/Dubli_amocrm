@@ -135,6 +135,36 @@ export class AmocrmService {
     return String(created.id);
   }
 
+  /** Примечание к сущности (лид/контакт/компания). */
+  async addNote(
+    accountId: string,
+    entityType: EntityType,
+    entityId: string,
+    text: string,
+  ): Promise<void> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const path = `/api/v4/${toPlural(entityType)}/${entityId}/notes`;
+    await this.http.apiPost(subdomain, accountId, path, accessToken, [
+      { note_type: 'common', params: { text } },
+    ]);
+  }
+
+  /** Задача, привязанная к сущности (для менеджера). */
+  async createTask(
+    accountId: string,
+    input: { entityType: EntityType; entityId: string; text: string; completeTill?: number },
+  ): Promise<void> {
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    await this.http.apiPost(subdomain, accountId, '/api/v4/tasks', accessToken, [
+      {
+        text: input.text,
+        entity_id: Number(input.entityId),
+        entity_type: toPlural(input.entityType),
+        complete_till: input.completeTill ?? Math.floor(Date.now() / 1000) + 86400,
+      },
+    ]);
+  }
+
   /** Резолв subdomain + валидного access-токена для аккаунта. */
   private async ctx(accountId: string): Promise<{ subdomain: string; accessToken: string }> {
     const account = await this.accounts.findById(accountId);

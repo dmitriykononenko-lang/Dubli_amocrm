@@ -43,6 +43,22 @@ export const envSchema = z.object({
   // Период опроса очереди фоновых сканов (мс). 0 — фоновый процессор выключен.
   SCAN_POLL_MS: z.coerce.number().int().min(0).default(2000),
 
+  // --- Биллинг / оплата (Этап 2) ---
+  BILLING_PRICE_PER_USER: z.coerce.number().positive().default(399),
+  BILLING_MIN_USERS: z.coerce.number().int().positive().default(5),
+  // Аккаунт amoCRM Ko:agency, куда падают счёт-сделки. Достаточно указать один из:
+  VENDOR_AMOCRM_ACCOUNT_ID: z.string().optional(),
+  VENDOR_AMOCRM_SUBDOMAIN: z.string().optional(),
+  // Выделенная воронка «Дубли — клиенты» и её этапы (необязательно; без них — сделка
+  // создаётся в главной воронке без переходов по этапам, но примечания/задачи пишутся).
+  VENDOR_AMOCRM_PIPELINE_ID: z.coerce.number().int().positive().optional(),
+  VENDOR_AMOCRM_STATUS_INSTALLED: z.coerce.number().int().positive().optional(),
+  VENDOR_AMOCRM_STATUS_REQUESTED: z.coerce.number().int().positive().optional(),
+  VENDOR_AMOCRM_STATUS_PAID: z.coerce.number().int().positive().optional(),
+  // ЮKassa (онлайн-оплата) — включается, когда заданы оба.
+  YOOKASSA_SHOP_ID: z.string().optional(),
+  YOOKASSA_SECRET_KEY: z.string().optional(),
+
   DATABASE_URL_TEST: z.string().optional(),
 });
 

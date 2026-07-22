@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { KYSELY } from '../common/db/kysely.tokens';
 import { requireAccountId } from '../common/db/account-scope';
 import type { AccountSettings, DB } from '../common/db/database.types';
@@ -33,6 +33,19 @@ export class AccountsRepository {
       .selectFrom('accounts')
       .selectAll()
       .where('account_id', '=', accountId)
+      .executeTakeFirst();
+  }
+
+  /**
+   * Поиск аккаунта по субдомену. Сравнение по префиксу (часть до первой точки),
+   * поэтому находит и «koagency», и «koagency.amocrm.ru».
+   */
+  async findBySubdomain(subdomain: string) {
+    const prefix = subdomain.split('.')[0];
+    return this.db
+      .selectFrom('accounts')
+      .selectAll()
+      .where(sql<boolean>`split_part(subdomain, '.', 1) = ${prefix}`)
       .executeTakeFirst();
   }
 

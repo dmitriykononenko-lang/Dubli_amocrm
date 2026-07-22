@@ -51,4 +51,36 @@ export class AppConfigService {
   get scanPollMs(): number {
     return this.get('SCAN_POLL_MS');
   }
+
+  // --- Биллинг ---
+  get billingPricePerUser(): number {
+    return this.get('BILLING_PRICE_PER_USER');
+  }
+  get billingMinUsers(): number {
+    return this.get('BILLING_MIN_USERS');
+  }
+  get vendorAmocrmAccountId(): string | undefined {
+    return this.get('VENDOR_AMOCRM_ACCOUNT_ID');
+  }
+  get vendorAmocrmSubdomain(): string | undefined {
+    return this.get('VENDOR_AMOCRM_SUBDOMAIN');
+  }
+  get vendorAmocrmPipelineId(): number | undefined {
+    return this.get('VENDOR_AMOCRM_PIPELINE_ID');
+  }
+  get vendorAmocrmStatusInstalled(): number | undefined {
+    return this.get('VENDOR_AMOCRM_STATUS_INSTALLED');
+  }
+  get vendorAmocrmStatusRequested(): number | undefined {
+    return this.get('VENDOR_AMOCRM_STATUS_REQUESTED');
+  }
+  get vendorAmocrmStatusPaid(): number | undefined {
+    return this.get('VENDOR_AMOCRM_STATUS_PAID');
+  }
+  get yookassaShopId(): string | undefined {
+    return this.get('YOOKASSA_SHOP_ID');
+  }
+  get yookassaSecretKey(): string | undefined {
+    return this.get('YOOKASSA_SECRET_KEY');
+  }
 }

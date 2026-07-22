@@ -3,6 +3,7 @@ import { AmocrmHttpClient } from '../../amocrm/amocrm-http.client';
 import { AccountsService } from '../../accounts/accounts.service';
 import { TokensService } from '../../tokens/tokens.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { BillingService } from '../../billing/billing.service';
 
 export interface InstallQuery {
   code?: string;
@@ -20,6 +21,7 @@ export class OauthService {
     private readonly accounts: AccountsService,
     private readonly tokens: TokensService,
     private readonly audit: AuditService,
+    private readonly billing: BillingService,
   ) {}
 
   // referer вида "example.amocrm.ru" или полный URL → subdomain "example".
@@ -65,6 +67,8 @@ export class OauthService {
       expiresIn: tok.expires_in,
     });
     await this.audit.log({ accountId, action: 'install', meta: { subdomain } });
+    // Ведём клиента в нашей amoCRM: заводим сделку на этапе «Установил» (best-effort).
+    await this.billing.onClientInstalled(accountId);
     this.logger.log(`Интеграция установлена: аккаунт ${accountId} (${subdomain})`);
     return { accountId, subdomain };
   }

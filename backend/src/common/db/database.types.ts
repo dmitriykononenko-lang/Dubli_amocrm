@@ -36,6 +36,8 @@ type JsonbRequired<T> = ColumnType<T, string, string>;
 export interface AccountSettings {
   security_key?: string;
   backend_url?: string;
+  /** id сделки этого клиента в нашей (Ko:agency) amoCRM — ведём его по этапам биллинга. */
+  vendor_lead_id?: string;
   [k: string]: unknown;
 }
 

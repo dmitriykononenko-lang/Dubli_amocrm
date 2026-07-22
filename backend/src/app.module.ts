@@ -12,6 +12,7 @@ import { MergeModule } from './merge/merge.module';
 import { RulesModule } from './rules/rules.module';
 import { SettingsModule } from './settings/settings.module';
 import { ScanModule } from './scan/scan.module';
+import { BillingModule } from './billing/billing.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -31,6 +32,7 @@ import { HealthModule } from './health/health.module';
     RulesModule,
     SettingsModule,
     ScanModule,
+    BillingModule,
     HealthModule,
   ],
 })

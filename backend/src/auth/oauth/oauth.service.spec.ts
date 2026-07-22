@@ -39,11 +39,19 @@ describe('OauthService.handleInstall', () => {
     const accounts = { upsert: jest.fn(async () => undefined) };
     const tokens = { save: jest.fn(async () => undefined) };
     const audit = { log: jest.fn(async () => undefined) };
-    const svc = new OauthService(httpClient(), accounts as never, tokens as never, audit as never);
+    const billing = { onClientInstalled: jest.fn(async () => undefined) };
+    const svc = new OauthService(
+      httpClient(),
+      accounts as never,
+      tokens as never,
+      audit as never,
+      billing as never,
+    );
 
     const res = await svc.handleInstall({ code: 'CODE', referer: 'demo.amocrm.ru' });
 
     expect(res).toEqual({ accountId: '777', subdomain: 'demo' });
+    expect(billing.onClientInstalled).toHaveBeenCalledWith('777');
     expect(accounts.upsert).toHaveBeenCalledWith({
       accountId: '777',
       subdomain: 'demo',
@@ -69,13 +77,14 @@ describe('OauthService.handleInstall', () => {
       { upsert: jest.fn(async () => undefined) } as never,
       { save: jest.fn(async () => undefined) } as never,
       { log: jest.fn(async () => undefined) } as never,
+      { onClientInstalled: jest.fn(async () => undefined) } as never,
     );
     const res = await svc.handleInstall({ code: 'C', referer: 'https://acme.amocrm.ru/' });
     expect(res.subdomain).toBe('acme');
   });
 
   it('без code → ошибка', async () => {
-    const svc = new OauthService(httpClient(), {} as never, {} as never, {} as never);
+    const svc = new OauthService(httpClient(), {} as never, {} as never, {} as never, {} as never);
     await expect(svc.handleInstall({ referer: 'demo.amocrm.ru' })).rejects.toThrow();
   });
 });
