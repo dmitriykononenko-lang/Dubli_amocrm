@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-20.1';
+    var WIDGET_BUILD = '2026-07-22.1';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -187,7 +187,12 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         '.dub-found__merge{margin-left:auto;flex:0 0 auto;padding:4px 10px;font-size:12px}',
         '.dub-found__rec{font-size:13px;color:#313942;padding:2px 0}',
         '.dub-found__rec-id{color:#92989b;font-size:12px}',
-        '.dub-found__empty{padding:6px 0}'
+        '.dub-found__empty{padding:6px 0}',
+        /* страница advanced_settings: держим контент в читаемой колонке, не даём уйти */
+        /* под боковое меню настроек, в каком бы контейнере amoCRM мы ни оказались */
+        '.dub-adv{box-sizing:border-box}',
+        '.dub-adv_col{max-width:1080px;margin:16px 0 48px}',
+        '.dub-adv_wide{max-width:1080px;margin:16px auto 48px;padding:0 20px}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -1098,13 +1103,29 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       },
 
       advancedSettings: function () {
-        // Полноэкранная страница «Расширенные настройки» внутри виджета: монтируемся в
-        // контейнер amoCRM (селектор зависит от версии), с запасными вариантами.
-        // renderSettings делает prepend, а не .html(), поэтому body не затирается.
-        var $mount = $(
-          '.widget_advanced_settings, .list-pipelines__hidden, .dub-advanced-settings-anchor',
-        ).first();
-        if (!$mount.length) $mount = $(document.body);
+        // amoCRM отдаёт под advanced_settings целую страницу и сам рисует её заголовок из
+        // advanced.title — в колонке контента, со сдвигом вправо от бокового меню настроек.
+        // Монтируемся сразу за этим заголовком, чтобы попасть в ТУ ЖЕ колонку (иначе контент
+        // уезжает во всю ширину и левый край прячется под меню). Ищем только среди h1–h3,
+        // чтобы не поймать одноимённый пункт меню. .dub-adv (CSS) ограничивает ширину и
+        // центрирует как страховку, если правильный контейнер не найден.
+        var titleText = (t('advanced.title', '') || '').replace(/\s+/g, ' ').trim();
+        var $title = $();
+        if (titleText) {
+          $('h1, h2, h3').each(function () {
+            if ($title.length) return;
+            if ($(this).text().replace(/\s+/g, ' ').trim() === titleText) $title = $(this);
+          });
+        }
+        var $mount;
+        if ($title.length) {
+          $mount = $('<div class="dub-advanced-settings-anchor dub-adv dub-adv_col"></div>');
+          $title.after($mount);
+        } else {
+          $mount = $('<div class="dub-advanced-settings-anchor dub-adv dub-adv_wide"></div>');
+          var $area = $('.widget_advanced_settings, .list-pipelines__hidden').first();
+          ($area.length ? $area : $(document.body)).append($mount);
+        }
         renderSettings($mount);
         return true;
       }

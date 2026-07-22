@@ -651,6 +651,52 @@ section('Экран настроек: найденные дубли (показ�
   $modalBody.remove();
 }
 
+section('advanced_settings: монтируемся в колонку заголовка, не под меню');
+{
+  resetEnv();
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/scan/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    return {};
+  };
+  // Эмуляция страницы advanced_settings: пункт меню с тем же текстом (как <a>, ellipsis в
+  // реальном амо оставляет полный текст в DOM) и колонка контента с заголовком-<h2>,
+  // который amoCRM рисует из advanced.title.
+  const $nav = $('<div class="settings-nav"><a class="nav-item">Дубли: чистка и объединение</a></div>').appendTo(document.body);
+  const $col = $('<div class="content-col"><h2 class="page-title">Дубли: чистка и объединение</h2></div>').appendTo(document.body);
+
+  const widget = makeWidget('advanced_settings');
+  const result = widget.callbacks.advancedSettings();
+  assert(result === true, 'advancedSettings() вернул true');
+  assert($('.content-col .dub-settings').length === 1, 'панель примонтирована в колонку заголовка');
+  assert($('.settings-nav .dub-settings').length === 0, 'панель НЕ попала в одноимённый пункт меню (только h1–h3)');
+  assert($('.content-col .dub-adv_col').length === 1, 'режим колонки (dub-adv_col), а не центровка');
+  assert($('.content-col .dub-found__show').length === 1, 'дашборд отрисован внутри колонки');
+
+  widget.callbacks.destroy();
+  $nav.remove();
+  $col.remove();
+}
+
+section('advanced_settings: фолбэк-контейнер, когда заголовка нет');
+{
+  resetEnv();
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/scan/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    return {};
+  };
+  const $area = $('<div class="widget_advanced_settings"></div>').appendTo(document.body);
+  const widget = makeWidget('advanced_settings');
+  widget.callbacks.advancedSettings();
+  assert($('.widget_advanced_settings .dub-settings').length === 1, 'фолбэк: панель в .widget_advanced_settings');
+  assert($('.widget_advanced_settings .dub-adv_wide').length === 1, 'фолбэк: центрированный режим (dub-adv_wide)');
+  widget.callbacks.destroy();
+  $area.remove();
+}
+
 /* 5. destroy() очищает добавленный DOM и слушатели */
 section('destroy() очищает DOM и слушатели');
 {
