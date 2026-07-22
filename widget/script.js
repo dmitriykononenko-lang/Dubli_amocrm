@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.1';
+    var WIDGET_BUILD = '2026-07-22.2';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -191,8 +191,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         /* страница advanced_settings: держим контент в читаемой колонке, не даём уйти */
         /* под боковое меню настроек, в каком бы контейнере amoCRM мы ни оказались */
         '.dub-adv{box-sizing:border-box}',
-        '.dub-adv_col{max-width:1080px;margin:16px 0 48px}',
-        '.dub-adv_wide{max-width:1080px;margin:16px auto 48px;padding:0 20px}'
+        '.dub-adv_col{max-width:1080px;margin:32px 0 56px}',
+        '.dub-adv_wide{max-width:1080px;margin:32px auto 56px;padding:0 20px}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -749,11 +749,15 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           return;
         }
         $list.html(scanJobsHtml(arr));
-        if (arr.some(isActiveScan)) {
+        var active = arr.some(isActiveScan);
+        if (active) {
           startScanPolling();
         } else {
           stopScanPolling();
+          // скан только что завершился — обновляем список найденных дублей
+          if (self._scanWasActive && $('.dub-found__list').length) loadDupGroups();
         }
+        self._scanWasActive = active;
       });
     }
 
@@ -950,6 +954,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         apiCall('GET', '/api/rules', null, function (rules) {
           $panel.html(settingsHtml(dedup || {}, rules || []));
           refreshScans(); // подгрузить задачи сканирования в секцию «Массовая чистка»
+          loadDupGroups(); // сразу показать найденные группы дублей (если есть)
         }, function () { $panel.html(loadErrorHtml()); });
       }, function () { $panel.html(loadErrorHtml()); });
 

@@ -3,10 +3,13 @@
     "name": "widget.name",
     "description": "widget.description",
     "short_description": "widget.short_description",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "interface_version": 2,
     "init_once": false,
-    "locale": ["ru", "en"],
+    "locale": [
+      "ru",
+      "en"
+    ],
     "installation": true,
     "oauth": "Y",
     "support": {

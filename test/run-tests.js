@@ -651,6 +651,32 @@ section('Экран настроек: найденные дубли (показ�
   $modalBody.remove();
 }
 
+section('Найденные дубли: авто-загрузка списка при открытии настроек');
+{
+  resetEnv();
+  let dupCalls = 0;
+  ajaxHandler = (opts) => {
+    if (/\/api\/settings/.test(opts.url) && opts.method !== 'PUT') return { response: { entities: {}, prevent_create: false } };
+    if (/\/api\/rules/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/scan/.test(opts.url) && opts.method === 'GET') return { response: [] };
+    if (/\/api\/duplicates/.test(opts.url) && opts.method === 'GET') {
+      dupCalls++;
+      return { response: { entity_type: 'contact', count: 1, groups: [
+        { key_type: 'phone', key_norm: '999', entities: [{ amo_id: '1', name: 'A' }, { amo_id: '2', name: 'B' }] }
+      ] } };
+    }
+    return {};
+  };
+  const widget = makeWidget('settings');
+  const $modalBody = settingsBody();
+  widget.callbacks.settings($modalBody);
+  // без клика по «Показать» список групп уже загружен и отрисован
+  assert(dupCalls >= 1, 'GET /api/duplicates вызван автоматически при открытии');
+  assert($modalBody.find('.dub-found__group').length === 1, 'группа дублей показана без клика по «Показать»');
+  widget.callbacks.destroy();
+  $modalBody.remove();
+}
+
 section('advanced_settings: монтируемся в колонку заголовка, не под меню');
 {
   resetEnv();
