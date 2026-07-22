@@ -71,17 +71,26 @@ export class BillingService {
     if (stages.requested) patch.status_id = stages.requested;
     await this.amocrm.update(vendorId, 'lead', dealId, patch);
 
-    await this.amocrm.addNote(
-      vendorId,
-      'lead',
-      dealId,
-      `Запросил счёт: ${q.sum} ₽ (${q.users} польз. × ${q.months} мес)`,
+    // Примечание и задача — обогащение, не должны ронять запрос счёта.
+    await this.best(
+      () =>
+        this.amocrm.addNote(
+          vendorId,
+          'lead',
+          dealId,
+          `Запросил счёт: ${q.sum} ₽ (${q.users} польз. × ${q.months} мес)`,
+        ),
+      'addNote(requested)',
     );
-    await this.amocrm.createTask(vendorId, {
-      entityType: 'lead',
-      entityId: dealId,
-      text: `Выставить счёт клиенту ${clientSub}: ${q.sum} ₽`,
-    });
+    await this.best(
+      () =>
+        this.amocrm.createTask(vendorId, {
+          entityType: 'lead',
+          entityId: dealId,
+          text: `Выставить счёт клиенту ${clientSub}: ${q.sum} ₽`,
+        }),
+      'createTask(invoice)',
+    );
 
     this.log.log(`Клиент ${clientSub}: запрос счёта на ${q.sum} ₽ → сделка #${dealId}`);
     return { ok: true, leadId: dealId, sum: q.sum };
@@ -178,7 +187,10 @@ export class BillingService {
     if (!dealId) return;
     const stages = await this.resolveStages(vendorId);
     if (stages.paid) await this.amocrm.update(vendorId, 'lead', dealId, { status_id: stages.paid });
-    await this.amocrm.addNote(vendorId, 'lead', dealId, 'Оплата получена (ЮKassa)');
+    await this.best(
+      () => this.amocrm.addNote(vendorId, 'lead', dealId, 'Оплата получена (ЮKassa)'),
+      'addNote(paid)',
+    );
   }
 
   /**
@@ -201,11 +213,9 @@ export class BillingService {
 
     const leadId = await this.amocrm.create(vendorId, 'lead', payload);
     await this.accounts.updateSettings(clientAccountId, { ...settings, vendor_lead_id: leadId });
-    await this.amocrm.addNote(
-      vendorId,
-      'lead',
-      leadId,
-      `Клиент установил виджет «Дубли»: ${clientSub}`,
+    await this.best(
+      () => this.amocrm.addNote(vendorId, 'lead', leadId, `Клиент установил виджет «Дубли»: ${clientSub}`),
+      'addNote(installed)',
     );
     this.log.log(`Клиент ${clientSub} установил виджет → сделка #${leadId} в vendor ${vendorId}`);
     return leadId;
@@ -241,6 +251,15 @@ export class BillingService {
     } catch (e) {
       this.log.warn(`Не удалось получить этапы воронки ${pid}: ${String(e)}`);
       return {};
+    }
+  }
+
+  /** Выполнить необязательное действие, не роняя основной поток (лог при ошибке). */
+  private async best(fn: () => Promise<unknown>, what: string): Promise<void> {
+    try {
+      await fn();
+    } catch (e) {
+      this.log.warn(`${what} не выполнено: ${String(e)}`);
     }
   }
 

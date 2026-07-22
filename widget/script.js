@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.4';
+    var WIDGET_BUILD = '2026-07-22.5';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -782,6 +782,17 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       }
     }
 
+    // Число пользователей amoCRM в аккаунте (для авто-подстановки; минимум — тариф).
+    function accountUsersCount() {
+      try {
+        var m = (typeof AMOCRM !== 'undefined' && AMOCRM.constant) ? AMOCRM.constant('managers') : null;
+        var n = m && typeof m === 'object' ? Object.keys(m).length : 0;
+        return Math.max(BILLING.minUsers, n || 0);
+      } catch (e) {
+        return BILLING.minUsers;
+      }
+    }
+
     // Расчёт подписки (для показа; авторитетный расчёт — на бэкенде при оплате).
     function calcPaySum(users, planId) {
       var u = Math.max(BILLING.minUsers, parseInt(users, 10) || 0);
@@ -808,7 +819,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     // Вкладка «Оплата»: тариф, число пользователей, срок, сумма, онлайн-оплата и счёт.
     function payPaneHtml(status) {
       var activeId = BILLING.plans[0].id;
-      var calc = calcPaySum((status && status.paid_users) || BILLING.minUsers, activeId);
+      var calc = calcPaySum((status && status.paid_users) || accountUsersCount(), activeId);
       var paid = status && status.paid_until;
       var statusLine = paid
         ? escapeHtml(t('settings.pay_status_paid', 'Оплачено до')) + ' ' + escapeHtml(String(status.paid_until)) +
