@@ -23,7 +23,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.10';
+    var WIDGET_BUILD = '2026-07-22.11';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -858,9 +858,6 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           escapeHtml(t('settings.pay_email', 'Email для чека')) + '</span>' +
           '<input type="email" class="dub-pay__email" placeholder="you@example.com" value="' +
           escapeHtml(currentUserEmail()) + '"></div>' +
-        '<div class="dub-pay__row"><span class="dub-pay__label">' +
-          escapeHtml(t('settings.pay_phone', 'Телефон для связи')) + '</span>' +
-          '<input type="tel" class="dub-pay__phone" placeholder="+7 999 000-00-00" value=""></div>' +
         '<div class="dub-pay__actions">' +
           '<b class="dub-pay__sum">' + fmtMoney(calc.sum) + '</b>' +
           '<button type="button" class="dub__btn dub__btn_primary dub-pay__online">' +
@@ -1356,7 +1353,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       }
       apiCall('POST', '/api/billing/checkout', {
         users: calc.users, months: calc.plan.months, email: email,
-        phone: String($root.find('.dub-pay__phone').val() || '').trim()
+        phone: String(getSettings().phone || '').trim()
       },
         function (resp) {
           if (resp && resp.confirmation_url) { window.location.href = resp.confirmation_url; }
@@ -1372,7 +1369,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var body = {
         users: calc.users,
         months: calc.plan.months,
-        phone: String($root.find('.dub-pay__phone').val() || '').trim(),
+        phone: String(getSettings().phone || '').trim(),
         email: String($root.find('.dub-pay__email').val() || '').trim()
       };
       apiCall('POST', '/api/billing/invoice-request', body,
