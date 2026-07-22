@@ -3,7 +3,7 @@
     "name": "widget.name",
     "description": "widget.description",
     "short_description": "widget.short_description",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "interface_version": 2,
     "init_once": false,
     "locale": ["ru", "en"],
@@ -15,8 +15,7 @@
     }
   },
   "locations": [
-    "settings",
-    "advanced_settings"
+    "settings"
   ],
   "settings": {
     "backend_url": {
@@ -29,6 +28,5 @@
       "type": "text",
       "required": false
     }
-  },
-  "advanced": {}
+  }
 }
