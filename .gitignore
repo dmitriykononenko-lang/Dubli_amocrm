@@ -12,3 +12,6 @@ backend/dist/
 backend/coverage/
 backend/.env
 .env
+
+# Секреты сборки виджета (code/secret_key интеграции) — не коммитим
+widget/.publish.env
