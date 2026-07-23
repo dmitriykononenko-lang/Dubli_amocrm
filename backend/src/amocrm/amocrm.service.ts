@@ -173,6 +173,41 @@ export class AmocrmService {
     ]);
   }
 
+  /** Поиск сущностей по строке (query) — для дедупа компаний/контактов. Возвращает до 10. */
+  async search(
+    accountId: string,
+    entityType: EntityType,
+    query: string,
+  ): Promise<Array<Record<string, unknown>>> {
+    if (!query) return [];
+    const { subdomain, accessToken } = await this.ctx(accountId);
+    const plural = toPlural(entityType);
+    const path = `/api/v4/${plural}?query=${encodeURIComponent(query)}&limit=10`;
+    const res = await this.http.apiGet<{ _embedded?: Record<string, Array<Record<string, unknown>>> }>(
+      subdomain,
+      accountId,
+      path,
+      accessToken,
+    );
+    return res?._embedded?.[plural] ?? [];
+  }
+
+  /** Название аккаунта amoCRM (для имени компании/контакта). null при ошибке. */
+  async getAccountName(accountId: string): Promise<string | null> {
+    try {
+      const { subdomain, accessToken } = await this.ctx(accountId);
+      const res = await this.http.apiGet<{ name?: string }>(
+        subdomain,
+        accountId,
+        '/api/v4/account',
+        accessToken,
+      );
+      return res?.name ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Этапы воронки (id + название) — для резолва статусов по имени. */
   async getPipelineStatuses(
     accountId: string,

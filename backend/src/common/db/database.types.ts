@@ -38,6 +38,12 @@ export interface AccountSettings {
   backend_url?: string;
   /** id сделки этого клиента в нашей (Ko:agency) amoCRM — ведём его по этапам биллинга. */
   vendor_lead_id?: string;
+  /** id компании клиента в vendor CRM (с полем «ID аккаунта amo»). */
+  vendor_company_id?: string;
+  /** id контакта клиента в vendor CRM (телефон/email). */
+  vendor_contact_id?: string;
+  /** Имя аккаунта клиента (из GET /api/v4/account) — для компании/контакта. */
+  client_name?: string;
   /** Подписка оплачена до (ISO). Пусто/в прошлом → демо-режим. */
   paid_until?: string;
   /** Телефон клиента (из настроек виджета) — чтобы не дублировать примечание при пересохранении. */

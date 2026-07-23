@@ -7,6 +7,7 @@ import {
 import { AppConfigService } from '../config/app-config.service';
 import { AmocrmService, VENDOR_ACCOUNT_KEY } from '../amocrm/amocrm.service';
 import { AccountsService } from '../accounts/accounts.service';
+import type { AccountSettings, EntityType } from '../common/db/database.types';
 import { computeQuote, type Quote } from './billing.pricing';
 import { YookassaClient } from './yookassa.client';
 
@@ -101,13 +102,22 @@ export class BillingService {
       'createTask(invoice)',
     );
 
+    // Привязать контакт клиента (телефон/email, с дедупом) к сделке.
+    if (phone || email) {
+      const name = await this.clientName(clientAccountId, await this.accounts.getSettings(clientAccountId));
+      await this.best(
+        () => this.attachContact(vendorId, clientAccountId, dealId, { phone, email, name }),
+        'attachContact(invoice)',
+      );
+    }
+
     this.log.log(`Клиент ${clientSub}: запрос счёта на ${q.sum} ₽ → сделка #${dealId}`);
     return { ok: true, leadId: dealId, sum: q.sum };
   }
 
   /**
-   * Контакт клиента (телефон/email из виджета) — пишем в сделку клиента в нашей amoCRM
-   * сразу после установки/сохранения. Идемпотентно: примечание только при смене телефона.
+   * Контакт клиента (телефон/email из виджета) — создаём/находим контакт в vendor CRM и
+   * привязываем к сделке. Идемпотентно: пропускаем, если телефон не менялся и контакт уже есть.
    */
   async saveContact(
     clientAccountId: string,
@@ -118,22 +128,22 @@ export class BillingService {
     if (!phone && !email) return { ok: true };
 
     const settings = await this.accounts.getSettings(clientAccountId);
-    if (settings.contact_phone === phone) return { ok: true };
+    if (settings.contact_phone === phone && settings.vendor_contact_id) return { ok: true };
 
     const vendorId = await this.resolveVendorAccountId();
     if (vendorId) {
       const dealId = await this.ensureClientDeal(clientAccountId);
       if (dealId) {
-        const line = [phone && `тел: ${phone}`, email && `email: ${email}`]
-          .filter(Boolean)
-          .join(' · ');
+        const name = await this.clientName(clientAccountId, settings);
         await this.best(
-          () => this.amocrm.addNote(vendorId, 'lead', dealId, `Контакт клиента: ${line}`),
-          'addNote(contact)',
+          () => this.attachContact(vendorId, clientAccountId, dealId, { phone, email, name }),
+          'attachContact',
         );
       }
     }
-    await this.accounts.updateSettings(clientAccountId, { ...settings, contact_phone: phone });
+    // Перечитываем настройки: под-методы могли записать vendor_*_id — не затираем их.
+    const latest = await this.accounts.getSettings(clientAccountId);
+    await this.accounts.updateSettings(clientAccountId, { ...latest, contact_phone: phone });
     return { ok: true };
   }
 
@@ -243,43 +253,137 @@ export class BillingService {
     if (!vendorId) return null;
 
     const settings = await this.accounts.getSettings(clientAccountId);
-    if (settings.vendor_lead_id) {
-      if (await this.dealExists(vendorId, String(settings.vendor_lead_id))) {
-        return String(settings.vendor_lead_id);
+    const name = await this.clientName(clientAccountId, settings);
+
+    let leadId: string;
+    if (settings.vendor_lead_id && (await this.entityExists(vendorId, 'lead', String(settings.vendor_lead_id)))) {
+      leadId = String(settings.vendor_lead_id);
+    } else {
+      if (settings.vendor_lead_id) {
+        this.log.warn(`Сделка ${settings.vendor_lead_id} клиента ${clientAccountId} не найдена — создаю заново`);
       }
-      this.log.warn(
-        `Сделка ${settings.vendor_lead_id} клиента ${clientAccountId} не найдена в vendor CRM — создаю заново`,
+      const payload: Record<string, unknown> = { name: `Дубли: ${name}` };
+      const pipelineId = this.config.vendorAmocrmPipelineId;
+      if (pipelineId) payload.pipeline_id = pipelineId;
+      const stages = await this.resolveStages(vendorId);
+      if (stages.installed) payload.status_id = stages.installed;
+      leadId = await this.amocrm.create(vendorId, 'lead', payload);
+      await this.accounts.updateSettings(clientAccountId, {
+        ...settings,
+        vendor_lead_id: leadId,
+        client_name: name,
+      });
+      await this.best(
+        () => this.amocrm.addNote(vendorId, 'lead', leadId, `Клиент установил виджет «Дубли»: ${name}`),
+        'addNote(installed)',
       );
+      this.log.log(`Клиент ${name} (${clientAccountId}) → сделка #${leadId} в vendor ${vendorId}`);
     }
 
-    const clientSub = await this.clientSubdomain(clientAccountId);
-    const payload: Record<string, unknown> = { name: `Дубли: ${clientSub}` };
-    const pipelineId = this.config.vendorAmocrmPipelineId;
-    if (pipelineId) payload.pipeline_id = pipelineId;
-    const stages = await this.resolveStages(vendorId);
-    if (stages.installed) payload.status_id = stages.installed;
-    // Кастом-поле «ID аккаунта amo|kommo» клиента (если задан VENDOR_AMOCRM_ACCOUNT_FIELD_ID).
-    const fieldId = this.config.vendorAmocrmAccountFieldId;
-    if (fieldId) {
-      payload.custom_fields_values = [
-        { field_id: fieldId, values: [{ value: String(clientAccountId) }] },
-      ];
+    // Компания с полем «ID аккаунта amo» — привязываем один раз (пока не сохранён id).
+    const fresh = await this.accounts.getSettings(clientAccountId);
+    if (!fresh.vendor_company_id) {
+      await this.best(() => this.attachCompany(vendorId, clientAccountId, leadId, name), 'attachCompany');
     }
-
-    const leadId = await this.amocrm.create(vendorId, 'lead', payload);
-    await this.accounts.updateSettings(clientAccountId, { ...settings, vendor_lead_id: leadId });
-    await this.best(
-      () => this.amocrm.addNote(vendorId, 'lead', leadId, `Клиент установил виджет «Дубли»: ${clientSub}`),
-      'addNote(installed)',
-    );
-    this.log.log(`Клиент ${clientSub} (${clientAccountId}) → сделка #${leadId} в vendor ${vendorId}`);
     return leadId;
   }
 
-  /** Существует ли сделка в vendor CRM. false только при явном 404 (удалена). */
-  private async dealExists(vendorId: string, leadId: string): Promise<boolean> {
+  /** Имя клиента: из GET /api/v4/account (кэшируется в settings), фолбэк — субдомен. */
+  private async clientName(clientAccountId: string, settings: AccountSettings): Promise<string> {
+    if (settings.client_name) return String(settings.client_name);
+    const name = await this.amocrm.getAccountName(clientAccountId);
+    return name || (await this.clientSubdomain(clientAccountId));
+  }
+
+  /**
+   * Компания клиента в vendor CRM с кастом-полем «ID аккаунта amo» (1173679, поле КОМПАНИИ,
+   * не сделки). Дедуп: сохранённый vendor_company_id → поиск по account_id → создание. Привязка к сделке.
+   */
+  private async attachCompany(
+    vendorId: string,
+    clientAccountId: string,
+    leadId: string,
+    name: string,
+  ): Promise<void> {
+    const settings = await this.accounts.getSettings(clientAccountId);
+    let companyId =
+      settings.vendor_company_id &&
+      (await this.entityExists(vendorId, 'company', String(settings.vendor_company_id)))
+        ? String(settings.vendor_company_id)
+        : null;
+    if (!companyId) companyId = await this.findCompanyByAccount(vendorId, clientAccountId);
+    if (!companyId) {
+      const payload: Record<string, unknown> = { name };
+      const fieldId = this.config.vendorAmocrmAccountFieldId;
+      if (fieldId) {
+        payload.custom_fields_values = [
+          { field_id: fieldId, values: [{ value: Number(clientAccountId) }] },
+        ];
+      }
+      companyId = await this.amocrm.create(vendorId, 'company', payload);
+    }
+    await this.accounts.updateSettings(clientAccountId, { ...settings, vendor_company_id: companyId });
+    await this.amocrm.link(vendorId, 'lead', leadId, [
+      { to_entity_id: Number(companyId), to_entity_type: 'companies' },
+    ]);
+  }
+
+  /** Поиск компании в vendor CRM по значению поля «ID аккаунта amo» = clientAccountId. */
+  private async findCompanyByAccount(vendorId: string, clientAccountId: string): Promise<string | null> {
+    const fieldId = this.config.vendorAmocrmAccountFieldId;
+    const found = await this.amocrm.search(vendorId, 'company', clientAccountId);
+    for (const c of found) {
+      const cfv = (c.custom_fields_values as Array<{ field_id?: number; values?: Array<{ value?: unknown }> }>) ?? [];
+      const cf = cfv.find((f) => f.field_id === fieldId);
+      if (cf && String(cf.values?.[0]?.value) === String(clientAccountId)) return String(c.id);
+    }
+    return null;
+  }
+
+  /**
+   * Контакт клиента в vendor CRM (телефон/email) с дедупом: сохранённый id → поиск по
+   * телефону/email → создание. Привязка к сделке. Best-effort вызывается из invoice/saveContact.
+   */
+  private async attachContact(
+    vendorId: string,
+    clientAccountId: string,
+    leadId: string,
+    contact: { phone?: string; email?: string; name: string },
+  ): Promise<void> {
+    const phone = (contact.phone ?? '').trim();
+    const email = (contact.email ?? '').trim();
+    if (!phone && !email) return;
+
+    const settings = await this.accounts.getSettings(clientAccountId);
+    let contactId =
+      settings.vendor_contact_id &&
+      (await this.entityExists(vendorId, 'contact', String(settings.vendor_contact_id)))
+        ? String(settings.vendor_contact_id)
+        : null;
+    if (!contactId) {
+      let hits = phone ? await this.amocrm.search(vendorId, 'contact', phone) : [];
+      if (!hits.length && email) hits = await this.amocrm.search(vendorId, 'contact', email);
+      if (hits.length) contactId = String(hits[0].id);
+    }
+    if (!contactId) {
+      const cfv: Array<Record<string, unknown>> = [];
+      if (phone) cfv.push({ field_code: 'PHONE', values: [{ value: phone }] });
+      if (email) cfv.push({ field_code: 'EMAIL', values: [{ value: email }] });
+      contactId = await this.amocrm.create(vendorId, 'contact', {
+        name: contact.name,
+        custom_fields_values: cfv,
+      });
+    }
+    await this.accounts.updateSettings(clientAccountId, { ...settings, vendor_contact_id: contactId });
+    await this.amocrm.link(vendorId, 'lead', leadId, [
+      { to_entity_id: Number(contactId), to_entity_type: 'contacts' },
+    ]);
+  }
+
+  /** Существует ли сущность в vendor CRM. false только при явном 404 (удалена). */
+  private async entityExists(vendorId: string, entityType: EntityType, id: string): Promise<boolean> {
     try {
-      await this.amocrm.getById(vendorId, 'lead', leadId);
+      await this.amocrm.getById(vendorId, entityType, id);
       return true;
     } catch (e) {
       if (/amoCRM API 404/.test(String(e))) return false;
