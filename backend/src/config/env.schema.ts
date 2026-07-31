@@ -73,8 +73,10 @@ export const envSchema = z.object({
   VENDOR_AMOCRM_STATUS_INSTALLED: emptyable(z.coerce.number().int().positive().optional()),
   VENDOR_AMOCRM_STATUS_REQUESTED: emptyable(z.coerce.number().int().positive().optional()),
   VENDOR_AMOCRM_STATUS_PAID: emptyable(z.coerce.number().int().positive().optional()),
-  // ID кастом-поля лида для «ID аккаунта amo|kommo» клиента (напр. 1173679).
+  // ID кастом-поля КОМПАНИИ «ID аккаунта amo|kommo» клиента (у koagency = 1173679).
   VENDOR_AMOCRM_ACCOUNT_FIELD_ID: emptyable(z.coerce.number().int().positive().optional()),
+  // ID кастом-поля КОМПАНИИ «Ссылка на аккаунт» (у koagency = 1195091) — пишем URL аккаунта клиента.
+  VENDOR_AMOCRM_ACCOUNT_LINK_FIELD_ID: emptyable(z.coerce.number().int().positive().optional()),
   // ЮKassa (онлайн-оплата) — включается, когда заданы оба.
   YOOKASSA_SHOP_ID: z.string().optional(),
   YOOKASSA_SECRET_KEY: z.string().optional(),
@@ -85,6 +87,12 @@ export const envSchema = z.object({
   YOOKASSA_FISCAL: emptyable(envBool.default(true)),
   // Ставка НДС в чеке: 1 = без НДС (УСН), 2 = 0%, 3 = 10%, 4 = 20%, 5 = 10/110, 6 = 20/120.
   YOOKASSA_VAT_CODE: emptyable(z.coerce.number().int().min(1).max(6).default(1)),
+
+  // Вендор-админ: доступ к /vendor/billing/* (управление подписками клиентов).
+  // Обязателен для vendor-роутов — без него они закрыты (401). Секрет, только в .env.
+  VENDOR_ADMIN_TOKEN: z.string().optional(),
+  // Пробный период виджета (дней от установки) — требование маркетплейса дать триал.
+  BILLING_TRIAL_DAYS: emptyable(z.coerce.number().int().min(0).default(7)),
 
   DATABASE_URL_TEST: z.string().optional(),
 });

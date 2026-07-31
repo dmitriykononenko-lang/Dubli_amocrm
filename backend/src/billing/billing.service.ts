@@ -10,6 +10,7 @@ import { AccountsService } from '../accounts/accounts.service';
 import type { AccountSettings, EntityType } from '../common/db/database.types';
 import { computeQuote, type Quote } from './billing.pricing';
 import { YookassaClient } from './yookassa.client';
+import { SubscriptionsService } from './subscriptions.service';
 
 /**
  * Ведение клиента виджета в НАШЕЙ (Ko:agency) amoCRM по этапам:
@@ -26,6 +27,7 @@ export class BillingService {
     private readonly amocrm: AmocrmService,
     private readonly accounts: AccountsService,
     private readonly yookassa: YookassaClient,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   quote(users: number, months: number): Quote {
@@ -40,6 +42,8 @@ export class BillingService {
    * Best-effort: сбой в нашей amoCRM НЕ должен ломать установку у клиента.
    */
   async onClientInstalled(clientAccountId: string): Promise<void> {
+    // Пробная подписка (триал от установки) — источник истины по доступу.
+    await this.best(() => this.subscriptions.ensure(clientAccountId), 'ensureSubscription');
     try {
       await this.ensureClientDeal(clientAccountId);
     } catch (e) {
@@ -210,25 +214,32 @@ export class BillingService {
     if (p.status !== 'succeeded') return;
     const accountId = String((p.metadata?.accountId as string | number | undefined) ?? '');
     const months = Number(p.metadata?.months ?? 0);
+    const users = Number(p.metadata?.users ?? 0) || null;
+    const amount = p.amount?.value != null ? Number(p.amount.value) : null;
     if (!accountId) return;
-    await this.markPaid(accountId, months);
+    // Продление через подписку — идемпотентно по payment_id (повторный вебхук не удвоит).
+    const res = await this.subscriptions.recordPayment({
+      accountId,
+      months,
+      users,
+      source: 'yookassa',
+      paymentId: p.id,
+      amount,
+    });
+    if (res.duplicate) {
+      this.log.log(`Повторный вебхук платежа ${p.id} — уже учтён`);
+      return;
+    }
+    await this.syncLegacyPaidUntil(accountId, res.paidTill);
     await this.moveDealToPaid(accountId);
     this.log.log(`Оплата подтверждена: аккаунт ${accountId}, +${months} мес (платёж ${p.id})`);
   }
 
-  /** Продление подписки: paid_until = max(сейчас, текущий paid_until) + months. */
-  private async markPaid(clientAccountId: string, months: number): Promise<void> {
+  /** Зеркалим дату продления в settings.paid_until — для существующих читателей (виджет «Оплачено до»). */
+  private async syncLegacyPaidUntil(clientAccountId: string, paidTillIso: string): Promise<void> {
+    if (!paidTillIso) return;
     const settings = await this.accounts.getSettings(clientAccountId);
-    const now = new Date();
-    const base =
-      settings.paid_until && new Date(String(settings.paid_until)) > now
-        ? new Date(String(settings.paid_until))
-        : now;
-    base.setMonth(base.getMonth() + Math.max(1, months));
-    await this.accounts.updateSettings(clientAccountId, {
-      ...settings,
-      paid_until: base.toISOString(),
-    });
+    await this.accounts.updateSettings(clientAccountId, { ...settings, paid_until: paidTillIso });
   }
 
   private async moveDealToPaid(clientAccountId: string): Promise<void> {
@@ -313,13 +324,17 @@ export class BillingService {
         : null;
     if (!companyId) companyId = await this.findCompanyByAccount(vendorId, clientAccountId);
     if (!companyId) {
-      const payload: Record<string, unknown> = { name };
+      const cfv: Array<Record<string, unknown>> = [];
       const fieldId = this.config.vendorAmocrmAccountFieldId;
-      if (fieldId) {
-        payload.custom_fields_values = [
-          { field_id: fieldId, values: [{ value: Number(clientAccountId) }] },
-        ];
+      if (fieldId) cfv.push({ field_id: fieldId, values: [{ value: Number(clientAccountId) }] });
+      // «Ссылка на аккаунт» — URL amoCRM клиента (по субдомену).
+      const linkFieldId = this.config.vendorAmocrmAccountLinkFieldId;
+      if (linkFieldId) {
+        const sub = await this.clientSubdomain(clientAccountId);
+        cfv.push({ field_id: linkFieldId, values: [{ value: `https://${sub}.amocrm.ru` }] });
       }
+      const payload: Record<string, unknown> = { name };
+      if (cfv.length) payload.custom_fields_values = cfv;
       companyId = await this.amocrm.create(vendorId, 'company', payload);
     }
     await this.accounts.updateSettings(clientAccountId, { ...settings, vendor_company_id: companyId });

@@ -33,6 +33,14 @@ DO $$ BEGIN
     ('install', 'token_use', 'webhook', 'api_call', 'merge', 'rollback', 'scan');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE subscription_status AS ENUM ('trial', 'active', 'past_due', 'canceled');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE payment_source AS ENUM ('yookassa', 'invoice', 'manual');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- =========================================================================
 -- accounts — подключённые аккаунты amoCRM/Kommo (биллинг за аккаунт)
 -- =========================================================================
@@ -191,5 +199,42 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_audit_account ON audit_log (account_id, created_at DESC);
+
+-- =========================================================================
+-- subscriptions — подписка клиента (одна на аккаунт). Источник истины по оплате
+-- и дате продления: виджет в amoМаркете «Внешняя оплата», amoCRM «оплачено до» не хранит.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS subscriptions (
+  account_id    BIGINT              PRIMARY KEY REFERENCES accounts(account_id) ON DELETE CASCADE,
+  status        subscription_status NOT NULL DEFAULT 'trial',
+  users         INTEGER,                                    -- параметры последней оплаты
+  months        INTEGER,
+  paid_till     TIMESTAMPTZ,                                -- оплачено до = дата продления (UTC)
+  trial_ends_at TIMESTAMPTZ,                                -- конец пробного периода
+  created_at    TIMESTAMPTZ         NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ         NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_paid_till ON subscriptions (paid_till);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions (status);
+
+-- =========================================================================
+-- payments — история платежей и ручных корректировок (аудит биллинга).
+-- payment_id уникален (идемпотентность вебхуков ЮKassa); NULL для invoice/manual.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS payments (
+  id          BIGINT         GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id  BIGINT         NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  amount      NUMERIC(12,2),                                -- сумма в рублях (NULL — ручной сдвиг без суммы)
+  users       INTEGER,
+  months      INTEGER,
+  source      payment_source NOT NULL,                      -- yookassa | invoice | manual
+  payment_id  TEXT,                                         -- id платежа ЮKassa (идемпотентность)
+  reason      TEXT,                                         -- причина (для manual/suspend/resume)
+  actor       TEXT,                                         -- кто (vendor-admin / system / yookassa)
+  paid_till   TIMESTAMPTZ,                                  -- снимок даты продления после операции
+  created_at  TIMESTAMPTZ    NOT NULL DEFAULT now(),
+  UNIQUE (payment_id)
+);
+CREATE INDEX IF NOT EXISTS idx_payments_account ON payments (account_id, created_at DESC);
 
 COMMIT;

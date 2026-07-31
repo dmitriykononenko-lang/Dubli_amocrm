@@ -7,6 +7,8 @@ import type { ColumnType, GeneratedAlways } from 'kysely';
 
 export type EntityType = 'contact' | 'company' | 'lead';
 export type KeyType = 'phone' | 'email' | 'inn' | 'name' | 'custom';
+export type SubscriptionStatus = 'trial' | 'active' | 'past_due' | 'canceled';
+export type PaymentSource = 'yookassa' | 'invoice' | 'manual';
 export type RuleOperator = 'AND' | 'OR';
 export type MergeMode = 'auto' | 'manual';
 export type ScanStatus = 'queued' | 'running' | 'paused' | 'done' | 'error';
@@ -165,6 +167,36 @@ export interface AuditLogTable {
   created_at: TsDefault;
 }
 
+// NUMERIC(12,2) — pg возвращает строкой; на запись принимаем число/строку.
+type NumericStr = ColumnType<string | null, string | number | null | undefined, string | number | null>;
+
+/** Подписка клиента (одна на аккаунт) — источник истины по оплате и дате продления. */
+export interface SubscriptionsTable {
+  account_id: BigIntStr;
+  status: ColumnType<SubscriptionStatus, SubscriptionStatus | undefined, SubscriptionStatus>;
+  users: ColumnType<number | null, number | null | undefined, number | null>;
+  months: ColumnType<number | null, number | null | undefined, number | null>;
+  paid_till: TsNullable;
+  trial_ends_at: TsNullable;
+  created_at: TsDefault;
+  updated_at: TsDefault;
+}
+
+/** История платежей / ручных корректировок (аудит биллинга). */
+export interface PaymentsTable {
+  id: IdentityId;
+  account_id: BigIntStr;
+  amount: NumericStr;
+  users: ColumnType<number | null, number | null | undefined, number | null>;
+  months: ColumnType<number | null, number | null | undefined, number | null>;
+  source: PaymentSource;
+  payment_id: ColumnType<string | null, string | null | undefined, string | null>;
+  reason: ColumnType<string | null, string | null | undefined, string | null>;
+  actor: ColumnType<string | null, string | null | undefined, string | null>;
+  paid_till: TsNullable;
+  created_at: TsDefault;
+}
+
 export interface DB {
   accounts: AccountsTable;
   oauth_tokens: OauthTokensTable;
@@ -176,4 +208,6 @@ export interface DB {
   scan_jobs: ScanJobsTable;
   webhook_events: WebhookEventsTable;
   audit_log: AuditLogTable;
+  subscriptions: SubscriptionsTable;
+  payments: PaymentsTable;
 }

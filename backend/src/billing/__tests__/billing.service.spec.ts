@@ -53,7 +53,17 @@ function make(
     }),
     getPayment: jest.fn(),
   } as unknown as YookassaClient;
-  return { svc: new BillingService(config, amocrm, accounts, yookassa), amocrm, accounts, yookassa };
+  const subscriptions = {
+    ensure: jest.fn().mockResolvedValue({ status: 'trial', paid_till: null }),
+    recordPayment: jest.fn().mockResolvedValue({ paidTill: '2027-01-01T00:00:00.000Z', duplicate: false }),
+  } as unknown as import('../subscriptions.service').SubscriptionsService;
+  return {
+    svc: new BillingService(config, amocrm, accounts, yookassa, subscriptions),
+    amocrm,
+    accounts,
+    yookassa,
+    subscriptions,
+  };
 }
 
 describe('BillingService — установка клиента', () => {
@@ -112,6 +122,36 @@ describe('BillingService — установка клиента', () => {
       '55501',
       [{ to_entity_id: 55501, to_entity_type: 'companies' }],
     );
+  });
+
+  it('находит существующую компанию по ID аккаунта и прикрепляет её (без создания новой)', async () => {
+    const { svc, amocrm } = make({ vendorAmocrmAccountFieldId: 1173679 });
+    (amocrm.search as jest.Mock).mockImplementation((_v: string, type: string) =>
+      type === 'company'
+        ? Promise.resolve([
+            { id: 6001, custom_fields_values: [{ field_id: 1173679, values: [{ value: 778 }] }] },
+          ])
+        : Promise.resolve([]),
+    );
+    await svc.onClientInstalled('778');
+    const companyCreate = (amocrm.create as jest.Mock).mock.calls.find((c) => c[1] === 'company');
+    expect(companyCreate).toBeUndefined(); // нашли существующую — новую не создаём
+    expect(amocrm.link).toHaveBeenCalledWith(expect.anything(), 'lead', '55501', [
+      { to_entity_id: 6001, to_entity_type: 'companies' },
+    ]);
+  });
+
+  it('пишет «Ссылку на аккаунт» (URL) в компанию, если поле задано', async () => {
+    const { svc, amocrm } = make({
+      vendorAmocrmAccountFieldId: 1173679,
+      vendorAmocrmAccountLinkFieldId: 1195091,
+    });
+    await svc.onClientInstalled('778');
+    const companyCall = (amocrm.create as jest.Mock).mock.calls.find((c) => c[1] === 'company');
+    expect(companyCall[2].custom_fields_values).toEqual([
+      { field_id: 1173679, values: [{ value: 778 }] },
+      { field_id: 1195091, values: [{ value: 'https://clientco.amocrm.ru' }] },
+    ]);
   });
 
   it('не роняет установку при ошибке amoCRM', async () => {

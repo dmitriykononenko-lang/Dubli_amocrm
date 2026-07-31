@@ -128,6 +128,9 @@ export class AppConfigService {
   get vendorAmocrmAccountFieldId(): number | undefined {
     return this.get('VENDOR_AMOCRM_ACCOUNT_FIELD_ID');
   }
+  get vendorAmocrmAccountLinkFieldId(): number | undefined {
+    return this.get('VENDOR_AMOCRM_ACCOUNT_LINK_FIELD_ID');
+  }
   get yookassaShopId(): string | undefined {
     return this.get('YOOKASSA_SHOP_ID');
   }
@@ -142,5 +145,13 @@ export class AppConfigService {
   }
   get yookassaVatCode(): number {
     return this.get('YOOKASSA_VAT_CODE');
+  }
+  /** Токен вендор-админа для /vendor/billing/*. undefined → vendor-роуты закрыты. */
+  get vendorAdminToken(): string | undefined {
+    return this.get('VENDOR_ADMIN_TOKEN');
+  }
+  /** Пробный период (дней от установки). */
+  get billingTrialDays(): number {
+    return this.get('BILLING_TRIAL_DAYS');
   }
 }
