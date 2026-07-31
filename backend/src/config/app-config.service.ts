@@ -75,6 +75,17 @@ export class AppConfigService {
     if (clientId && pub && pub.clientId === clientId) return pub;
     return this.privateOauthClient;
   }
+  /**
+   * Строгий поиск по client_id: вернёт клиента ТОЛЬКО если id совпал с настроенным
+   * приватным или публичным приложением, иначе null. Для валидации callback: неизвестный
+   * client_id → явная ошибка (в отличие от oauthClientById, который откатывается к приватному).
+   */
+  knownOauthClient(clientId: string): OAuthClient | null {
+    if (clientId === this.amocrmClientId) return this.privateOauthClient;
+    const pub = this.publicOauthClient;
+    if (pub && clientId === pub.clientId) return pub;
+    return null;
+  }
 
   get webhookSecurityKey(): string | undefined {
     return this.get('WEBHOOK_SECURITY_KEY');

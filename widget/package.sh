@@ -31,6 +31,29 @@ fi
 VERSION="$(python3 -c 'import json;print(json.load(open("manifest.json"))["widget"]["version"])')"
 OUT="$DIR/dubli-${VERSION}.zip"
 
+# 2b. Размеры логотипов для маркетплейса (читаем IHDR PNG, без Pillow).
+python3 - <<'PY'
+import struct, sys
+REQUIRED = {'images/logo.png': (130, 100), 'images/logo_small.png': (108, 108)}
+def png_size(p):
+    with open(p, 'rb') as f:
+        head = f.read(24)
+    if head[:8] != b'\x89PNG\r\n\x1a\n':
+        raise SystemExit(f'✖ {p}: не PNG')
+    return struct.unpack('>II', head[16:24])
+bad = []
+for path, want in REQUIRED.items():
+    got = png_size(path)
+    if got != want:
+        bad.append(f'{path}: {got[0]}x{got[1]}, нужно {want[0]}x{want[1]}')
+if bad:
+    print('✖ Размеры логотипов не соответствуют маркетплейсу:', file=sys.stderr)
+    for b in bad:
+        print('  -', b, file=sys.stderr)
+    sys.exit(1)
+print('логотипы ok — logo.png 130x100, logo_small.png 108x108')
+PY
+
 # 3. Сборка во временной папке (manifest.json с подставленными code+secret_key).
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT

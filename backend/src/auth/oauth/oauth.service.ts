@@ -4,7 +4,7 @@ import { AccountsService } from '../../accounts/accounts.service';
 import { TokensService } from '../../tokens/tokens.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { BillingService } from '../../billing/billing.service';
-import { AppConfigService } from '../../config/app-config.service';
+import { AppConfigService, type OAuthClient } from '../../config/app-config.service';
 
 export interface InstallQuery {
   code?: string;
@@ -59,12 +59,7 @@ export class OauthService {
     if (!q.code) throw new BadRequestException('Не передан code авторизации');
     const subdomain = this.extractSubdomain(q.referer);
 
-    const client = variant === 'public' ? this.config.publicOauthClient : this.config.privateOauthClient;
-    if (!client) {
-      throw new BadRequestException(
-        'Публичная интеграция не настроена (PUBLIC_AMOCRM_CLIENT_ID/PUBLIC_AMOCRM_CLIENT_SECRET)',
-      );
-    }
+    const client = this.resolveInstallClient(q.client_id, variant);
 
     const tok = await this.http.exchangeToken(
       subdomain,
@@ -93,5 +88,28 @@ export class OauthService {
     await this.billing.onClientInstalled(accountId);
     this.logger.log(`Интеграция установлена (${variant}): аккаунт ${accountId} (${subdomain})`);
     return { accountId, subdomain };
+  }
+
+  /**
+   * Выбор OAuth-приложения для установки. Приоритет — client_id из query: amoCRM МОЖЕТ
+   * прислать его в callback, тогда выбор детерминирован даже на общем redirect (реестр
+   * приватного/публичного). Неизвестный client_id → явная ошибка. Если client_id не пришёл —
+   * выбираем по эндпоинту редиректа (variant: /oauth/callback vs /oauth/callback/public).
+   */
+  private resolveInstallClient(queryClientId: string | undefined, variant: OAuthVariant): OAuthClient {
+    if (queryClientId) {
+      const known = this.config.knownOauthClient(queryClientId);
+      if (!known) {
+        throw new BadRequestException(`Неизвестный client_id при установке: ${queryClientId}`);
+      }
+      return known;
+    }
+    const byVariant = variant === 'public' ? this.config.publicOauthClient : this.config.privateOauthClient;
+    if (!byVariant) {
+      throw new BadRequestException(
+        'Публичная интеграция не настроена (PUBLIC_AMOCRM_CLIENT_ID/PUBLIC_AMOCRM_CLIENT_SECRET)',
+      );
+    }
+    return byVariant;
   }
 }

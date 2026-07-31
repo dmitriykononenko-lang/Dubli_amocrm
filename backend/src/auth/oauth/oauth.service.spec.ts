@@ -38,8 +38,17 @@ describe('OauthService.handleInstall', () => {
     return new AmocrmHttpClient(config as never);
   }
 
-  function cfg(pub: unknown = null) {
-    return { privateOauthClient: PRIVATE_CLIENT, publicOauthClient: pub };
+  function cfg(pub: { clientId: string } | null = null) {
+    return {
+      amocrmClientId: PRIVATE_CLIENT.clientId,
+      privateOauthClient: PRIVATE_CLIENT,
+      publicOauthClient: pub,
+      knownOauthClient: (id: string) => {
+        if (id === PRIVATE_CLIENT.clientId) return PRIVATE_CLIENT;
+        if (pub && id === pub.clientId) return pub;
+        return null;
+      },
+    };
   }
   const accountsMock = () => ({
     upsert: jest.fn(async () => undefined),
@@ -113,6 +122,44 @@ describe('OauthService.handleInstall', () => {
       '42',
       expect.objectContaining({ oauth_client_id: 'pub-cid' }),
     );
+  });
+
+  it('выбирает клиента по client_id из query (публичный) даже на общем redirect', async () => {
+    const pool = agent.get('https://q.amocrm.ru');
+    pool
+      .intercept({ path: '/oauth2/access_token', method: 'POST' })
+      .reply(200, { token_type: 'Bearer', expires_in: 86400, access_token: 'AT', refresh_token: 'RT' });
+    pool.intercept({ path: '/api/v4/account', method: 'GET' }).reply(200, { id: 55 });
+
+    const accounts = accountsMock();
+    const svc = new OauthService(
+      httpClient(),
+      accounts as never,
+      { save: jest.fn(async () => undefined) } as never,
+      { log: jest.fn(async () => undefined) } as never,
+      { onClientInstalled: jest.fn(async () => undefined) } as never,
+      cfg(PUBLIC_CLIENT) as never,
+    );
+    // variant по умолчанию private, но client_id в query = публичный → берём публичный
+    await svc.handleInstall({ code: 'C', referer: 'q.amocrm.ru', client_id: 'pub-cid' });
+    expect(accounts.updateSettings).toHaveBeenCalledWith(
+      '55',
+      expect.objectContaining({ oauth_client_id: 'pub-cid' }),
+    );
+  });
+
+  it('неизвестный client_id из query → ошибка', async () => {
+    const svc = new OauthService(
+      httpClient(),
+      accountsMock() as never,
+      { save: jest.fn() } as never,
+      { log: jest.fn() } as never,
+      { onClientInstalled: jest.fn() } as never,
+      cfg(PUBLIC_CLIENT) as never,
+    );
+    await expect(
+      svc.handleInstall({ code: 'C', referer: 'x.amocrm.ru', client_id: 'stranger' }),
+    ).rejects.toThrow();
   });
 
   it('публичная установка без настроенного PUBLIC_* → ошибка', async () => {
