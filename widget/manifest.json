@@ -35,5 +35,8 @@
   },
   "advanced": {
     "title": "advanced.title"
-  }
+  },
+  "free": "N",
+  "countries": ["RU", "KZ", "BY"],
+  "category": "crm_integrations"
 }
