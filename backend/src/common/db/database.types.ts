@@ -36,6 +36,8 @@ type JsonbRequired<T> = ColumnType<T, string, string>;
 export interface AccountSettings {
   security_key?: string;
   backend_url?: string;
+  /** client_id OAuth-интеграции, которой установлен аккаунт (приватная/публичная) — чтобы refresh шёл тем же клиентом. */
+  oauth_client_id?: string;
   /** id сделки этого клиента в нашей (Ko:agency) amoCRM — ведём его по этапам биллинга. */
   vendor_lead_id?: string;
   /** id компании клиента в vendor CRM (с полем «ID аккаунта amo»). */

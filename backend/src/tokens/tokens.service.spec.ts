@@ -21,7 +21,10 @@ describe('TokensService', () => {
       }),
       find: jest.fn(async () => store.row),
     };
-    const accounts = { findById: jest.fn(async () => ({ account_id: '1', subdomain: 'demo' })) };
+    const accounts = {
+      findById: jest.fn(async () => ({ account_id: '1', subdomain: 'demo' })),
+      getSettings: jest.fn(async () => ({})),
+    };
     const amocrmHttp = {
       exchangeToken: jest.fn(async () => ({
         token_type: 'Bearer',
@@ -31,14 +34,17 @@ describe('TokensService', () => {
       })),
     };
     const audit = { log: jest.fn(async () => undefined) };
+    const PRIVATE_CLIENT = { clientId: 'cid', clientSecret: 'secret', redirectUri: 'https://x/cb' };
+    const config = { oauthClientById: jest.fn(() => PRIVATE_CLIENT) };
     const service = new TokensService(
       repo as any,
       accounts as any,
       amocrmHttp as any,
       audit as any,
       kms,
+      config as any,
     );
-    return { service, repo, accounts, amocrmHttp, audit, store };
+    return { service, repo, accounts, amocrmHttp, audit, config, store };
   }
 
   it('save шифрует токены и хранит составной nonce (24 байта)', async () => {
@@ -64,10 +70,11 @@ describe('TokensService', () => {
     await service.save('1', { accessToken: 'OLD', refreshToken: 'OLD_R', expiresIn: -10 });
     const token = await service.getValidAccessToken('1');
     expect(token).toBe('NEW_ACCESS');
-    expect(amocrmHttp.exchangeToken).toHaveBeenCalledWith('demo', {
-      grant_type: 'refresh_token',
-      refresh_token: 'OLD_R',
-    });
+    expect(amocrmHttp.exchangeToken).toHaveBeenCalledWith(
+      'demo',
+      { grant_type: 'refresh_token', refresh_token: 'OLD_R' },
+      expect.objectContaining({ clientId: 'cid' }),
+    );
     // новый refresh тоже сохранён и читается при следующем refresh
     await service.save('1', { accessToken: 'X', refreshToken: 'X', expiresIn: -10 });
   });

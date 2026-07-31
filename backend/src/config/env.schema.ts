@@ -46,6 +46,13 @@ export const envSchema = z.object({
   AMOCRM_CLIENT_SECRET: z.string().min(1, 'AMOCRM_CLIENT_SECRET обязателен'),
   AMOCRM_REDIRECT_URI: z.string().url('AMOCRM_REDIRECT_URI должен быть URL'),
 
+  // Публичная (маркетплейс amoМаркет) интеграция — необязательна. Когда заданы оба
+  // ключа, бэкенд принимает установки и с публичного OAuth-клиента (эндпоинт
+  // /oauth/callback/public), не ломая приватную интеграцию.
+  PUBLIC_AMOCRM_CLIENT_ID: z.string().optional(),
+  PUBLIC_AMOCRM_CLIENT_SECRET: z.string().optional(),
+  PUBLIC_AMOCRM_REDIRECT_URI: emptyable(z.string().url().optional()),
+
   WEBHOOK_SECURITY_KEY: z.string().optional(),
   AMOCRM_RATE_LIMIT_RPS: z.coerce.number().positive().default(7),
   // Период опроса очереди фоновых сканов (мс). 0 — фоновый процессор выключен.

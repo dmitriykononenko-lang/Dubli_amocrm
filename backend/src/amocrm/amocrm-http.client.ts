@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { request } from 'undici';
-import { AppConfigService } from '../config/app-config.service';
+import { AppConfigService, type OAuthClient } from '../config/app-config.service';
 import { Throttler } from './throttler';
 import { RetryableError, withRetry } from './retry';
 
@@ -38,12 +38,20 @@ export class AmocrmHttpClient {
     return t;
   }
 
-  /** OAuth: обмен authorization_code или обновление по refresh_token. */
-  async exchangeToken(subdomain: string, grant: TokenGrant): Promise<TokenResponse> {
+  /**
+   * OAuth: обмен authorization_code или обновление по refresh_token.
+   * client — реквизиты приложения (приватного/публичного). Без него — приватное из конфига.
+   */
+  async exchangeToken(
+    subdomain: string,
+    grant: TokenGrant,
+    client?: OAuthClient,
+  ): Promise<TokenResponse> {
+    const c = client ?? this.config.privateOauthClient;
     const body = {
-      client_id: this.config.amocrmClientId,
-      client_secret: this.config.amocrmClientSecret,
-      redirect_uri: this.config.amocrmRedirectUri,
+      client_id: c.clientId,
+      client_secret: c.clientSecret,
+      redirect_uri: c.redirectUri,
       ...grant,
     };
     const res = await request(`${this.baseUrl(subdomain)}/oauth2/access_token`, {

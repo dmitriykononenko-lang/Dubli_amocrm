@@ -4,6 +4,7 @@ import { AccountsService } from '../accounts/accounts.service';
 import { AmocrmHttpClient } from '../amocrm/amocrm-http.client';
 import { AuditService } from '../common/audit/audit.service';
 import { KMS_SERVICE, type KmsService } from '../common/crypto/kms.interface';
+import { AppConfigService } from '../config/app-config.service';
 
 const NONCE_LEN = 12;
 // amoCRM refresh-токен живёт ~3 месяца; точного expiry в ответе нет — берём 90 дней.
@@ -30,6 +31,7 @@ export class TokensService {
     private readonly amocrmHttp: AmocrmHttpClient,
     private readonly audit: AuditService,
     @Inject(KMS_SERVICE) private readonly kms: KmsService,
+    private readonly config: AppConfigService,
   ) {}
 
   async save(accountId: string, tokens: OAuthTokens): Promise<void> {
@@ -78,10 +80,17 @@ export class TokensService {
       })
     ).toString('utf8');
 
-    const resp = await this.amocrmHttp.exchangeToken(account.subdomain, {
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    });
+    // Refresh — тем же OAuth-приложением, которым установлен аккаунт (иначе amoCRM
+    // отклонит: refresh-токен привязан к client_id). Старые установки без записи → приватное.
+    const settings = await this.accounts.getSettings(accountId);
+    const client = this.config.oauthClientById(
+      settings.oauth_client_id ? String(settings.oauth_client_id) : undefined,
+    );
+    const resp = await this.amocrmHttp.exchangeToken(
+      account.subdomain,
+      { grant_type: 'refresh_token', refresh_token: refreshToken },
+      client,
+    );
     await this.save(accountId, {
       accessToken: resp.access_token,
       refreshToken: resp.refresh_token,

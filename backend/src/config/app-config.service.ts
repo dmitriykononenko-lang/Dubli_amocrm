@@ -2,6 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from './env.schema';
 
+/** Пара реквизитов OAuth-приложения amoCRM (приватная или публичная интеграция). */
+export interface OAuthClient {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
 /** Типизированный доступ к конфигурации. В остальном коде — никаких прямых process.env. */
 @Injectable()
 export class AppConfigService {
@@ -42,6 +49,33 @@ export class AppConfigService {
   get amocrmRedirectUri(): string {
     return this.get('AMOCRM_REDIRECT_URI');
   }
+
+  /** Приватная интеграция (основная, задана всегда). */
+  get privateOauthClient(): OAuthClient {
+    return {
+      clientId: this.amocrmClientId,
+      clientSecret: this.amocrmClientSecret,
+      redirectUri: this.amocrmRedirectUri,
+    };
+  }
+  /** Публичная (маркетплейс) интеграция — null, если PUBLIC_AMOCRM_* не заданы. */
+  get publicOauthClient(): OAuthClient | null {
+    const clientId = this.get('PUBLIC_AMOCRM_CLIENT_ID');
+    const clientSecret = this.get('PUBLIC_AMOCRM_CLIENT_SECRET');
+    if (!clientId || !clientSecret) return null;
+    return {
+      clientId,
+      clientSecret,
+      redirectUri: this.get('PUBLIC_AMOCRM_REDIRECT_URI') ?? this.amocrmRedirectUri,
+    };
+  }
+  /** OAuth-клиент по его client_id (для refresh тем же приложением). Фолбэк — приватный. */
+  oauthClientById(clientId?: string): OAuthClient {
+    const pub = this.publicOauthClient;
+    if (clientId && pub && pub.clientId === clientId) return pub;
+    return this.privateOauthClient;
+  }
+
   get webhookSecurityKey(): string | undefined {
     return this.get('WEBHOOK_SECURITY_KEY');
   }
