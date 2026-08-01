@@ -154,4 +154,27 @@ export class AppConfigService {
   get billingTrialDays(): number {
     return this.get('BILLING_TRIAL_DAYS');
   }
+  /** Льготный период после paid_till для трека «счёт» (дней). */
+  get billingInvoiceGraceDays(): number {
+    return this.get('BILLING_INVOICE_GRACE_DAYS');
+  }
+  /** За сколько дней до paid_till списывать карту (рекуррент). */
+  get billingRenewLeadDays(): number {
+    return this.get('BILLING_RENEW_LEAD_DAYS');
+  }
+  /** Дни ретраев списания карты (dunning), напр. [1,3,5]. */
+  get billingDunningRetries(): number[] {
+    return String(this.get('BILLING_DUNNING_RETRIES'))
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  }
+  /** За сколько дней до paid_till слать напоминание. */
+  get billingNotifyLeadDays(): number {
+    return this.get('BILLING_NOTIFY_LEAD_DAYS');
+  }
+  /** Вебхук уведомлений вендору (Telegram/incoming), либо undefined. */
+  get billingNotifyTelegramWebhook(): string | undefined {
+    return this.get('BILLING_NOTIFY_TELEGRAM_WEBHOOK');
+  }
 }

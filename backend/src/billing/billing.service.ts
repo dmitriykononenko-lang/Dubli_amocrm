@@ -60,7 +60,7 @@ export class BillingService {
     users: number,
     months: number,
     contact?: { phone?: string; email?: string },
-  ): Promise<{ ok: true; leadId: string; sum: number }> {
+  ): Promise<{ ok: true; leadId: string; sum: number; invoiceNumber: string }> {
     const q = this.quote(users, months);
     const vendorId = await this.resolveVendorAccountId();
     if (!vendorId) {
@@ -115,8 +115,28 @@ export class BillingService {
       );
     }
 
-    this.log.log(`Клиент ${clientSub}: запрос счёта на ${q.sum} ₽ → сделка #${dealId}`);
-    return { ok: true, leadId: dealId, sum: q.sum };
+    // Трек «счёт»: регистрируем счёт с уникальным номером (в назначение платежа) и
+    // переводим подписку в awaiting_invoice_payment. Идёт после сделки, чтобы знать её id.
+    const invoiceNumber = this.invoiceNumber(clientAccountId);
+    await this.best(
+      () =>
+        this.subscriptions.issueInvoice(clientAccountId, {
+          users: q.users,
+          months: q.months,
+          amount: q.sum,
+          number: invoiceNumber,
+          vendorDealId: dealId,
+        }),
+      'issueInvoice',
+    );
+
+    this.log.log(`Клиент ${clientSub}: счёт ${invoiceNumber} на ${q.sum} ₽ → сделка #${dealId}`);
+    return { ok: true, leadId: dealId, sum: q.sum, invoiceNumber };
+  }
+
+  /** Уникальный номер счёта (референс в назначении платежа): DUB-<accountId>-<base36 времени>. */
+  private invoiceNumber(clientAccountId: string): string {
+    return `DUB-${clientAccountId}-${Date.now().toString(36).toUpperCase()}`;
   }
 
   /**

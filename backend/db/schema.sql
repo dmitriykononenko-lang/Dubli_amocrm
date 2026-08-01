@@ -41,6 +41,18 @@ DO $$ BEGIN
   CREATE TYPE payment_source AS ENUM ('yookassa', 'invoice', 'manual');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE payment_method_type AS ENUM ('card', 'invoice', 'none');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE invoice_status AS ENUM ('issued', 'paid', 'canceled', 'expired');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Ожидание оплаты по счёту — новый статус подписки. PG12+ допускает ADD VALUE в транзакции
+-- (значение не используется в этой же транзакции — только в коде приложения).
+ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'awaiting_invoice_payment';
+
 -- =========================================================================
 -- accounts — подключённые аккаунты amoCRM/Kommo (биллинг за аккаунт)
 -- =========================================================================
@@ -216,6 +228,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 CREATE INDEX IF NOT EXISTS idx_subscriptions_paid_till ON subscriptions (paid_till);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions (status);
+-- Два трека оплаты (карта-рекуррент / счёт) + льготный период для банковского перевода.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method payment_method_type NOT NULL DEFAULT 'none';
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS grace_until TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS yk_payment_method_id TEXT;   -- токен сохранённой карты ЮKassa
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- =========================================================================
 -- payments — история платежей и ручных корректировок (аудит биллинга).
@@ -236,5 +253,26 @@ CREATE TABLE IF NOT EXISTS payments (
   UNIQUE (payment_id)
 );
 CREATE INDEX IF NOT EXISTS idx_payments_account ON payments (account_id, created_at DESC);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'RUB';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT;
+
+-- =========================================================================
+-- invoices — трек оплаты по счёту (юрлицо, банковский перевод). Продление после
+-- подтверждения поступления (стадия сделки «Оплачен» или вручную). Матчинг по number.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS invoices (
+  id             BIGINT         GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id     BIGINT         NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  number         TEXT           NOT NULL UNIQUE,                 -- референс в назначении платежа
+  amount         NUMERIC(12,2),
+  period_months  INTEGER,
+  users          INTEGER,
+  status         invoice_status NOT NULL DEFAULT 'issued',
+  vendor_deal_id TEXT,                                           -- сделка-счёт в koagency
+  issued_at      TIMESTAMPTZ    NOT NULL DEFAULT now(),
+  paid_at        TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_invoices_account ON invoices (account_id, status);
+CREATE INDEX IF NOT EXISTS idx_invoices_deal ON invoices (vendor_deal_id);
 
 COMMIT;

@@ -18,13 +18,18 @@ function make(row: Partial<SubscriptionRow> | null, opts: { paymentExists?: bool
     insertPayment: jest.fn().mockResolvedValue(undefined),
     listPayments: jest.fn().mockResolvedValue([]),
     list: jest.fn().mockResolvedValue([]),
+    createInvoice: jest.fn().mockResolvedValue(undefined),
+    findInvoiceByNumber: jest.fn().mockResolvedValue(undefined),
+    findInvoiceByDeal: jest.fn().mockResolvedValue(undefined),
+    updateInvoice: jest.fn().mockResolvedValue(undefined),
+    listInvoices: jest.fn().mockResolvedValue([]),
   } as unknown as SubscriptionsRepository;
   const accounts = {
     findById: jest.fn().mockResolvedValue({ account_id: '1', subdomain: 'clientco', installed_at: new Date() }),
     getSettings: jest.fn().mockResolvedValue({}),
     findBySubdomain: jest.fn().mockResolvedValue({ account_id: '1' }),
   } as unknown as AccountsService;
-  const config = { billingTrialDays: 7 } as unknown as AppConfigService;
+  const config = { billingTrialDays: 7, billingInvoiceGraceDays: 5 } as unknown as AppConfigService;
   return { svc: new SubscriptionsService(repo, accounts, config), repo };
 }
 
@@ -106,6 +111,69 @@ describe('SubscriptionsService.suspend/resume', () => {
     const { svc } = make({ status: 'canceled', paid_till: past });
     const res = await svc.resume('1', {});
     expect(res.status).toBe('past_due');
+  });
+});
+
+describe('SubscriptionsService — трек «счёт»', () => {
+  it('issueInvoice создаёт счёт и переводит подписку в awaiting_invoice_payment', async () => {
+    const { svc, repo } = make({ status: 'trial' });
+    await svc.issueInvoice('1', { users: 5, months: 6, amount: 11970, number: 'DUB-1-ABC', vendorDealId: '55501' });
+    expect(repo.createInvoice).toHaveBeenCalledWith(
+      expect.objectContaining({ number: 'DUB-1-ABC', periodMonths: 6, vendorDealId: '55501' }),
+    );
+    expect(repo.update).toHaveBeenCalledWith('1', { status: 'awaiting_invoice_payment' });
+  });
+
+  it('markInvoicePaid по номеру продлевает, ставит grace и payment_method=invoice', async () => {
+    const { svc, repo } = make({ status: 'awaiting_invoice_payment', paid_till: null });
+    (repo.findInvoiceByNumber as jest.Mock).mockResolvedValue({
+      id: 10, account_id: '1', number: 'DUB-1-ABC', period_months: 6, users: 5, amount: '11970.00', status: 'issued',
+    });
+    const res = await svc.markInvoicePaid('DUB-1-ABC', { actor: 'operator' });
+    expect(res.alreadyPaid).toBe(false);
+    expect(repo.updateInvoice).toHaveBeenCalledWith('10', expect.objectContaining({ status: 'paid' }));
+    const patch = (repo.update as jest.Mock).mock.calls.at(-1)?.[1];
+    expect(patch.status).toBe('active');
+    expect(patch.payment_method).toBe('invoice');
+    expect(patch.grace_until).toBeInstanceOf(Date);
+    expect(repo.insertPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'invoice', paymentId: 'invoice:DUB-1-ABC' }),
+    );
+  });
+
+  it('markInvoicePaid идемпотентен: уже оплаченный счёт не продлевает', async () => {
+    const { svc, repo } = make({ status: 'active' });
+    (repo.findInvoiceByNumber as jest.Mock).mockResolvedValue({ id: 10, account_id: '1', number: 'X', status: 'paid' });
+    const res = await svc.markInvoicePaid('X');
+    expect(res.alreadyPaid).toBe(true);
+    expect(repo.insertPayment).not.toHaveBeenCalled();
+  });
+
+  it('markInvoicePaid по неизвестному номеру → ошибка', async () => {
+    const { svc } = make({ status: 'active' });
+    await expect(svc.markInvoicePaid('NOPE')).rejects.toThrow();
+  });
+
+  it('markInvoicePaidByDeal (вебхук стадии) находит счёт по сделке и подтверждает', async () => {
+    const { svc, repo } = make({ status: 'awaiting_invoice_payment', paid_till: null });
+    const inv = { id: 10, account_id: '1', number: 'DUB-1-Z', period_months: 6, users: 5, amount: '11970.00', status: 'issued' };
+    (repo.findInvoiceByDeal as jest.Mock).mockResolvedValue(inv);
+    (repo.findInvoiceByNumber as jest.Mock).mockResolvedValue(inv);
+    const res = await svc.markInvoicePaidByDeal('55501', { actor: 'amocrm-webhook' });
+    expect('ok' in res && res.ok).toBe(true);
+  });
+
+  it('markInvoicePaidByDeal: сделки без счёта → ok:false (в ручной разбор)', async () => {
+    const { svc } = make({ status: 'active' });
+    const res = await svc.markInvoicePaidByDeal('9999');
+    expect(res).toEqual({ ok: false, reason: expect.any(String) });
+  });
+
+  it('grace-гейтинг: доступ есть, пока now ≤ grace_until (paid_till в прошлом)', async () => {
+    const past = new Date(Date.now() - 2 * DAY);
+    const grace = new Date(Date.now() + 3 * DAY);
+    const { svc } = make({ status: 'active', payment_method: 'invoice', paid_till: past, grace_until: grace });
+    expect((await svc.access('1')).allowed).toBe(true);
   });
 });
 

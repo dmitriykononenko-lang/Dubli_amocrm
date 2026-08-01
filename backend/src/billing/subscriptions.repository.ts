@@ -4,6 +4,9 @@ import { KYSELY } from '../common/db/kysely.tokens';
 import { requireAccountId } from '../common/db/account-scope';
 import type {
   DB,
+  InvoiceStatus,
+  InvoicesTable,
+  PaymentMethodType,
   PaymentSource,
   PaymentsTable,
   SubscriptionStatus,
@@ -12,6 +15,7 @@ import type {
 
 export type SubscriptionRow = Selectable<SubscriptionsTable>;
 export type PaymentRow = Selectable<PaymentsTable>;
+export type InvoiceRow = Selectable<InvoicesTable>;
 
 /** Строка листинга подписок для вендор-панели (аккаунт + подписка + последний платёж). */
 export interface SubscriptionListRow {
@@ -23,6 +27,8 @@ export interface SubscriptionListRow {
   months: number | null;
   paid_till: Date | null;
   trial_ends_at: Date | null;
+  grace_until: Date | null;
+  payment_method: PaymentMethodType | null;
   last_amount: string | null;
 }
 
@@ -74,6 +80,10 @@ export class SubscriptionsRepository {
       months: number | null;
       paid_till: Date | null;
       trial_ends_at: Date | null;
+      grace_until: Date | null;
+      payment_method: PaymentMethodType;
+      yk_payment_method_id: string | null;
+      auto_renew: boolean;
     }>,
   ): Promise<void> {
     requireAccountId(accountId);
@@ -81,6 +91,61 @@ export class SubscriptionsRepository {
       .updateTable('subscriptions')
       .set({ ...patch, updated_at: new Date() })
       .where('account_id', '=', accountId)
+      .execute();
+  }
+
+  // --- Счета (трек оплаты по счёту) ---
+
+  async createInvoice(inv: {
+    accountId: string;
+    number: string;
+    amount: number | null;
+    periodMonths: number | null;
+    users: number | null;
+    vendorDealId: string | null;
+  }): Promise<void> {
+    requireAccountId(inv.accountId);
+    await this.db
+      .insertInto('invoices')
+      .values({
+        account_id: inv.accountId,
+        number: inv.number,
+        amount: inv.amount,
+        period_months: inv.periodMonths,
+        users: inv.users,
+        vendor_deal_id: inv.vendorDealId,
+      })
+      .execute();
+  }
+
+  findInvoiceByNumber(number: string): Promise<InvoiceRow | undefined> {
+    return this.db.selectFrom('invoices').selectAll().where('number', '=', number).executeTakeFirst();
+  }
+
+  findInvoiceByDeal(vendorDealId: string): Promise<InvoiceRow | undefined> {
+    return this.db
+      .selectFrom('invoices')
+      .selectAll()
+      .where('vendor_deal_id', '=', vendorDealId)
+      .orderBy('issued_at', 'desc')
+      .executeTakeFirst();
+  }
+
+  async updateInvoice(
+    id: string,
+    patch: Partial<{ status: InvoiceStatus; paid_at: Date | null; vendor_deal_id: string | null }>,
+  ): Promise<void> {
+    await this.db.updateTable('invoices').set(patch).where('id', '=', id).execute();
+  }
+
+  listInvoices(accountId: string, limit = 50): Promise<InvoiceRow[]> {
+    requireAccountId(accountId);
+    return this.db
+      .selectFrom('invoices')
+      .selectAll()
+      .where('account_id', '=', accountId)
+      .orderBy('issued_at', 'desc')
+      .limit(limit)
       .execute();
   }
 
@@ -147,6 +212,8 @@ export class SubscriptionsRepository {
         's.months as months',
         's.paid_till as paid_till',
         's.trial_ends_at as trial_ends_at',
+        's.grace_until as grace_until',
+        's.payment_method as payment_method',
         eb
           .selectFrom('payments as p')
           .select('p.amount')

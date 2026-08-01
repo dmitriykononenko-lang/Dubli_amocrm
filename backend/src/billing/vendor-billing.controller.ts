@@ -79,4 +79,10 @@ export class VendorBillingController {
     const accountId = await this.subs.resolveAccountId(subdomain);
     return this.subs.resume(accountId, { actor: body?.actor });
   }
+
+  /** Отметить счёт оплаченным вручную (fallback к стадийному вебхуку). Матчинг по номеру. */
+  @Post('invoices/:number/mark-paid')
+  markInvoicePaid(@Param('number') number: string, @Body() body: MutateBody) {
+    return this.subs.markInvoicePaid(number, { actor: body?.actor ?? 'vendor-admin' });
+  }
 }

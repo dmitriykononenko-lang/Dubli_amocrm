@@ -7,8 +7,15 @@ import type { ColumnType, GeneratedAlways } from 'kysely';
 
 export type EntityType = 'contact' | 'company' | 'lead';
 export type KeyType = 'phone' | 'email' | 'inn' | 'name' | 'custom';
-export type SubscriptionStatus = 'trial' | 'active' | 'past_due' | 'canceled';
+export type SubscriptionStatus =
+  | 'trial'
+  | 'active'
+  | 'awaiting_invoice_payment'
+  | 'past_due'
+  | 'canceled';
 export type PaymentSource = 'yookassa' | 'invoice' | 'manual';
+export type PaymentMethodType = 'card' | 'invoice' | 'none';
+export type InvoiceStatus = 'issued' | 'paid' | 'canceled' | 'expired';
 export type RuleOperator = 'AND' | 'OR';
 export type MergeMode = 'auto' | 'manual';
 export type ScanStatus = 'queued' | 'running' | 'paused' | 'done' | 'error';
@@ -178,8 +185,26 @@ export interface SubscriptionsTable {
   months: ColumnType<number | null, number | null | undefined, number | null>;
   paid_till: TsNullable;
   trial_ends_at: TsNullable;
+  payment_method: ColumnType<PaymentMethodType, PaymentMethodType | undefined, PaymentMethodType>;
+  grace_until: TsNullable;
+  yk_payment_method_id: ColumnType<string | null, string | null | undefined, string | null>;
+  auto_renew: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: TsDefault;
   updated_at: TsDefault;
+}
+
+/** Счёт клиенту (трек оплаты по счёту). Продление после подтверждения поступления. */
+export interface InvoicesTable {
+  id: IdentityId;
+  account_id: BigIntStr;
+  number: string;
+  amount: NumericStr;
+  period_months: ColumnType<number | null, number | null | undefined, number | null>;
+  users: ColumnType<number | null, number | null | undefined, number | null>;
+  status: ColumnType<InvoiceStatus, InvoiceStatus | undefined, InvoiceStatus>;
+  vendor_deal_id: ColumnType<string | null, string | null | undefined, string | null>;
+  issued_at: TsDefault;
+  paid_at: TsNullable;
 }
 
 /** История платежей / ручных корректировок (аудит биллинга). */
@@ -194,6 +219,8 @@ export interface PaymentsTable {
   reason: ColumnType<string | null, string | null | undefined, string | null>;
   actor: ColumnType<string | null, string | null | undefined, string | null>;
   paid_till: TsNullable;
+  currency: ColumnType<string, string | undefined, string>;
+  status: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: TsDefault;
 }
 
@@ -210,4 +237,5 @@ export interface DB {
   audit_log: AuditLogTable;
   subscriptions: SubscriptionsTable;
   payments: PaymentsTable;
+  invoices: InvoicesTable;
 }

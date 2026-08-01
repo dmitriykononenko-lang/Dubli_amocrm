@@ -56,6 +56,8 @@ function make(
   const subscriptions = {
     ensure: jest.fn().mockResolvedValue({ status: 'trial', paid_till: null }),
     recordPayment: jest.fn().mockResolvedValue({ paidTill: '2027-01-01T00:00:00.000Z', duplicate: false }),
+    issueInvoice: jest.fn().mockResolvedValue({ number: 'DUB-778-TEST' }),
+    markInvoicePaid: jest.fn().mockResolvedValue({ ok: true, paidTill: '2027-01-01T00:00:00.000Z', alreadyPaid: false }),
   } as unknown as import('../subscriptions.service').SubscriptionsService;
   return {
     svc: new BillingService(config, amocrm, accounts, yookassa, subscriptions),
@@ -177,7 +179,12 @@ describe('BillingService.requestInvoice', () => {
       { vendor_lead_id: '55501', vendor_company_id: '5' },
     );
     const res = await svc.requestInvoice('778', 8, 12);
-    expect(res).toEqual({ ok: true, leadId: '55501', sum: 399 * 8 * 10 });
+    expect(res).toEqual({
+      ok: true,
+      leadId: '55501',
+      sum: 399 * 8 * 10,
+      invoiceNumber: expect.stringMatching(/^DUB-778-/),
+    });
     expect(amocrm.create).not.toHaveBeenCalled();
     expect(amocrm.update).toHaveBeenCalledWith(
       '900',

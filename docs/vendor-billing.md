@@ -14,9 +14,15 @@ TOK='X-Vendor-Token: <VENDOR_ADMIN_TOKEN>'
 ```
 
 ## Модель
-- `status`: `trial` (идёт пробный период) · `active` (оплачено) · `past_due` (истекло) · `canceled` (приостановлено вендором).
-- Доступ виджета разрешён, если `now ≤ paid_till` ИЛИ `now ≤ trial_ends_at`, и подписка не `canceled`.
-- Оплата (ЮKassa/счёт) продлевает `paid_till` от текущей даты, если подписка активна, иначе от `now`. Идемпотентно по `payment_id`.
+Два трека продления в одной модели (`subscriptions.payment_method`):
+- **card** (ЮKassa: карта/СБП/ЮMoney) — рекуррент (авто-списание, фаза 4). Без grace.
+- **invoice** (счёт юрлицу, банковский перевод) — авто-списания нет; продление после подтверждения поступления, с льготным периодом `grace_until = paid_till + BILLING_INVOICE_GRACE_DAYS`.
+
+`status`: `trial` (пробный) · `active` (оплачено) · `awaiting_invoice_payment` (счёт выставлен, ждём оплату) · `past_due` (истекло) · `canceled` (приостановлено вендором).
+
+**Гейтинг доступа**: разрешён, если подписка не `canceled` И (`now ≤ paid_till` ИЛИ `now ≤ grace_until` ИЛИ `now ≤ trial_ends_at`).
+
+**Продление**: `paid_till = max(now, paid_till) + months` (от текущей даты, если активна, иначе от `now`). Идемпотентно по `payment_id` (для счёта — `invoice:<number>`).
 
 ## Эндпоинты
 
@@ -64,7 +70,23 @@ curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' -d '{}' \
 # → { status }
 ```
 
+## Трек «счёт» — подтверждение оплаты
+«Запросить счёт» из виджета создаёт запись `invoices` с уникальным **номером** `DUB-<accountId>-<...>` (его клиент указывает в назначении платежа), сделку-счёт в koagency и переводит подписку в `awaiting_invoice_payment`. Продление — после подтверждения поступления.
+
+**Основной путь — по стадии сделки (оператор только двигает стадию):**
+в koagency настроить вебхук смены стадии сделки на
+`https://dubli.koagency.ru/vendor/billing/webhook/amocrm-paid?key=<WEBHOOK_SECURITY_KEY>`.
+Когда сделка-счёт уходит в стадию «Оплачен» (`VENDOR_AMOCRM_STATUS_PAID`), бэкенд находит счёт по `vendor_deal_id`, помечает `paid`, продлевает `paid_till` и выставляет grace.
+
+**Fallback — вручную по номеру:**
+```bash
+curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' -d '{"actor":"operator"}' \
+  "$BASE/vendor/billing/invoices/DUB-33022710-ABCDEF/mark-paid"
+# → { ok, paidTill, alreadyPaid }   (повторный вызов на оплаченном счёте — alreadyPaid:true, без двойного продления)
+```
+Матчинг — только по номеру счёта (не по сумме: у разных клиентов суммы совпадают). Непонятное поступление/не тот номер → ручной разбор.
+
 ## Заметки
-- Все мутации пишутся в таблицу `payments` (источник `manual` для ручных, `yookassa`/`invoice` для оплат) с `reason`/`actor` — это аудит.
-- Оплата по счёту подтверждается вручную через `extend` (`add_months` или точная дата) — так дата продления и история остаются в одном месте.
-- `payments.payment_id` уникален → повторный вебхук ЮKassa не продлевает дважды.
+- Все мутации пишутся в `payments` (источник `manual`/`yookassa`/`invoice`) с `reason`/`actor` — аудит.
+- `payments.payment_id` уникален → повторный вебхук (карта или стадия счёта) не продлевает дважды.
+- Дальнейшие фазы: AdminJS-панель, напоминания, карта-рекуррент+dunning, авто-сверка по банку.

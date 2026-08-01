@@ -93,6 +93,16 @@ export const envSchema = z.object({
   VENDOR_ADMIN_TOKEN: z.string().optional(),
   // Пробный период виджета (дней от установки) — требование маркетплейса дать триал.
   BILLING_TRIAL_DAYS: emptyable(z.coerce.number().int().min(0).default(7)),
+  // Льготный период после paid_till для трека «счёт» (банковский перевод юрлица идёт 1–3 дня).
+  BILLING_INVOICE_GRACE_DAYS: emptyable(z.coerce.number().int().min(0).default(5)),
+  // За сколько дней до paid_till пытаться списать карту (рекуррент, фаза 4).
+  BILLING_RENEW_LEAD_DAYS: emptyable(z.coerce.number().int().min(0).default(3)),
+  // Дни ретраев списания карты при неудаче (dunning, фаза 4). Список через запятую.
+  BILLING_DUNNING_RETRIES: emptyable(z.string().default('1,3,5')),
+  // За сколько дней до paid_till слать напоминание (фаза 3).
+  BILLING_NOTIFY_LEAD_DAYS: emptyable(z.coerce.number().int().min(0).default(5)),
+  // Вебхук уведомлений вендору (Telegram/incoming webhook) — опционально (фаза 3).
+  BILLING_NOTIFY_TELEGRAM_WEBHOOK: z.string().optional(),
 
   DATABASE_URL_TEST: z.string().optional(),
 });
