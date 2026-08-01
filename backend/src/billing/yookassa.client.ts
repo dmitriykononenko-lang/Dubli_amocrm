@@ -8,6 +8,7 @@ export interface YkPayment {
   paid?: boolean;
   amount?: { value: string; currency: string };
   confirmation?: { confirmation_url?: string };
+  payment_method?: { id?: string; saved?: boolean; type?: string };
   metadata?: Record<string, unknown>;
 }
 
@@ -34,6 +35,7 @@ export class YookassaClient {
     returnUrl: string;
     metadata: Record<string, unknown>;
     receipt?: Record<string, unknown>;
+    savePaymentMethod?: boolean;
   }): Promise<YkPayment> {
     const body: Record<string, unknown> = {
       amount: { value: input.amount.toFixed(2), currency: 'RUB' },
@@ -42,18 +44,48 @@ export class YookassaClient {
       description: input.description.slice(0, 128),
       metadata: input.metadata,
     };
+    // Сохранить способ оплаты для последующих безакцептных списаний (рекуррент).
+    if (input.savePaymentMethod) body.save_payment_method = true;
     // Чек (54-ФЗ) — обязателен для магазинов с фискализацией.
     if (input.receipt) body.receipt = input.receipt;
+    return this.post(body, randomUUID());
+  }
+
+  /**
+   * Безакцептное списание с сохранённого способа оплаты (рекуррент, off-session).
+   * idempotenceKey — стабильный ключ логического списания (accountId+paidTill+attempt),
+   * чтобы повтор того же списания не прошёл дважды на стороне ЮKassa.
+   */
+  async chargeSaved(input: {
+    amount: number;
+    description: string;
+    paymentMethodId: string;
+    metadata: Record<string, unknown>;
+    idempotenceKey: string;
+    receipt?: Record<string, unknown>;
+  }): Promise<YkPayment> {
+    const body: Record<string, unknown> = {
+      amount: { value: input.amount.toFixed(2), currency: 'RUB' },
+      capture: true,
+      payment_method_id: input.paymentMethodId,
+      description: input.description.slice(0, 128),
+      metadata: input.metadata,
+    };
+    if (input.receipt) body.receipt = input.receipt;
+    return this.post(body, input.idempotenceKey);
+  }
+
+  private async post(body: Record<string, unknown>, idempotenceKey: string): Promise<YkPayment> {
     const res = await fetch('https://api.yookassa.ru/v3/payments', {
       method: 'POST',
       headers: {
         Authorization: this.authHeader(),
-        'Idempotence-Key': randomUUID(),
+        'Idempotence-Key': idempotenceKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`ЮKassa createPayment ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`ЮKassa payment ${res.status}: ${await res.text()}`);
     return (await res.json()) as YkPayment;
   }
 

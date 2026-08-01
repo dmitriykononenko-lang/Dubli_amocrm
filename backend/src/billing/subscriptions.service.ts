@@ -122,6 +122,8 @@ export class SubscriptionsService {
       patch.payment_method = 'card';
       patch.auto_renew = true;
       patch.grace_until = null;
+      patch.dunning_attempts = 0; // успешное списание сбрасывает счётчик неудач
+      patch.next_charge_at = null;
       if (input.ykPaymentMethodId) patch.yk_payment_method_id = input.ykPaymentMethodId;
     } else if (input.source === 'invoice') {
       patch.payment_method = 'invoice';

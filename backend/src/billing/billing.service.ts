@@ -217,6 +217,7 @@ export class BillingService {
       returnUrl,
       metadata: { accountId: clientAccountId, users: q.users, months: q.months },
       receipt,
+      savePaymentMethod: true, // сохраняем карту для авто-продления (рекуррент)
     });
     const url = payment.confirmation?.confirmation_url;
     if (!url) throw new ServiceUnavailableException('ЮKassa не вернула ссылку на оплату');
@@ -237,6 +238,8 @@ export class BillingService {
     const users = Number(p.metadata?.users ?? 0) || null;
     const amount = p.amount?.value != null ? Number(p.amount.value) : null;
     if (!accountId) return;
+    // Токен сохранённой карты (для будущих безакцептных списаний рекуррентом).
+    const ykPaymentMethodId = p.payment_method?.saved ? (p.payment_method.id ?? null) : null;
     // Продление через подписку — идемпотентно по payment_id (повторный вебхук не удвоит).
     const res = await this.subscriptions.recordPayment({
       accountId,
@@ -245,6 +248,7 @@ export class BillingService {
       source: 'yookassa',
       paymentId: p.id,
       amount,
+      ykPaymentMethodId,
     });
     if (res.duplicate) {
       this.log.log(`Повторный вебхук платежа ${p.id} — уже учтён`);

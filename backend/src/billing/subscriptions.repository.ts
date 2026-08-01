@@ -84,6 +84,8 @@ export class SubscriptionsRepository {
       payment_method: PaymentMethodType;
       yk_payment_method_id: string | null;
       auto_renew: boolean;
+      dunning_attempts: number;
+      next_charge_at: Date | null;
     }>,
   ): Promise<void> {
     requireAccountId(accountId);
@@ -92,6 +94,49 @@ export class SubscriptionsRepository {
       .set({ ...patch, updated_at: new Date() })
       .where('account_id', '=', accountId)
       .execute();
+  }
+
+  /**
+   * Карты к безакцептному списанию: payment_method=card, auto_renew, есть сохранённый метод,
+   * и либо близко к paid_till (окно leadDays), либо наступил срок dunning-повтора (next_charge_at).
+   */
+  dueForCharge(
+    now: Date,
+    leadDays: number,
+  ): Promise<
+    Array<{
+      account_id: string;
+      users: number | null;
+      months: number | null;
+      paid_till: Date | null;
+      dunning_attempts: number;
+      yk_payment_method_id: string;
+    }>
+  > {
+    const soon = new Date(now.getTime() + leadDays * 86400_000);
+    return this.db
+      .selectFrom('subscriptions')
+      .select(['account_id', 'users', 'months', 'paid_till', 'dunning_attempts', 'yk_payment_method_id'])
+      .where('payment_method', '=', 'card')
+      .where('auto_renew', '=', true)
+      .where('yk_payment_method_id', 'is not', null)
+      .where('status', 'in', ['active', 'past_due'])
+      .where((eb) =>
+        eb.or([
+          eb.and([eb('paid_till', 'is not', null), eb('paid_till', '<=', soon)]),
+          eb.and([eb('next_charge_at', 'is not', null), eb('next_charge_at', '<=', now)]),
+        ]),
+      )
+      .execute() as Promise<
+      Array<{
+        account_id: string;
+        users: number | null;
+        months: number | null;
+        paid_till: Date | null;
+        dunning_attempts: number;
+        yk_payment_method_id: string;
+      }>
+    >;
   }
 
   // --- Счета (трек оплаты по счёту) ---

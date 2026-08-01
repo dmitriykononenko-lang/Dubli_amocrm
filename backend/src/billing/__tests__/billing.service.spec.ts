@@ -392,6 +392,23 @@ describe('BillingService.handlePaymentNotification', () => {
     expect(amocrm.addNote).toHaveBeenCalledWith('900', 'lead', '55501', expect.stringContaining('Оплата'));
   });
 
+  it('сохраняет карту при первом онлайн-платеже (payment_method.saved)', async () => {
+    const { svc, subscriptions, yookassa } = make(
+      { yookassaShopId: 's', yookassaSecretKey: 'k' },
+      { vendor_lead_id: '55501' },
+    );
+    (yookassa.getPayment as jest.Mock).mockResolvedValue({
+      id: 'pay_1',
+      status: 'succeeded',
+      metadata: { accountId: '778', months: 6, users: 5 },
+      payment_method: { id: 'pm_9', saved: true },
+    });
+    await svc.handlePaymentNotification('pay_1');
+    expect(subscriptions.recordPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'yookassa', ykPaymentMethodId: 'pm_9' }),
+    );
+  });
+
   it('неуспешный платёж → ничего не меняет', async () => {
     const { svc, accounts, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
     (yookassa.getPayment as jest.Mock).mockResolvedValue({ id: 'pay_1', status: 'pending', metadata: { accountId: '778' } });

@@ -14,6 +14,7 @@ import { SubscriptionsService } from './subscriptions.service';
 import { VendorTokenGuard } from './vendor-token.guard';
 import { BillingNotifier } from './billing-notifier';
 import { BillingScheduler } from './billing-scheduler';
+import { BillingRecurrentService } from './billing-recurrent.service';
 
 @Module({
   imports: [ApiAuthModule, AmocrmModule, AccountsModule],
@@ -32,6 +33,7 @@ import { BillingScheduler } from './billing-scheduler';
     VendorTokenGuard,
     BillingNotifier,
     BillingScheduler,
+    BillingRecurrentService,
   ],
   exports: [BillingService, SubscriptionsService],
 })

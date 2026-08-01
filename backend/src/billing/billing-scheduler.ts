@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { AppConfigService } from '../config/app-config.service';
 import { SubscriptionsService } from './subscriptions.service';
 import { BillingNotifier } from './billing-notifier';
+import { BillingRecurrentService } from './billing-recurrent.service';
 
 type DueReminder = Awaited<ReturnType<SubscriptionsService['listDueReminders']>>[number];
 
@@ -23,6 +24,7 @@ export class BillingScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly subs: SubscriptionsService,
     private readonly notifier: BillingNotifier,
     private readonly config: AppConfigService,
+    private readonly recurrent: BillingRecurrentService,
   ) {}
 
   onModuleInit(): void {
@@ -41,6 +43,8 @@ export class BillingScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.busy) return;
     this.busy = true;
     try {
+      // Сначала списываем карты (успех продлит paid_till и уберёт из «истекающих»).
+      await this.recurrent.chargeDueCards();
       const overdue = await this.subs.markOverdue();
       if (overdue) this.log.log(`Помечено past_due: ${overdue}`);
       const due = await this.subs.listDueReminders();

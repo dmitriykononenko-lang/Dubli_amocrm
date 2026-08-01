@@ -234,6 +234,8 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS grace_until TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS yk_payment_method_id TEXT;   -- токен сохранённой карты ЮKassa
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;      -- последнее напоминание об истечении
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS dunning_attempts INTEGER NOT NULL DEFAULT 0; -- неудачные списания подряд
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS next_charge_at TIMESTAMPTZ;   -- когда повторить списание карты (dunning)
 
 -- =========================================================================
 -- payments — история платежей и ручных корректировок (аудит биллинга).

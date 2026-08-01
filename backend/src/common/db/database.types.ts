@@ -190,6 +190,8 @@ export interface SubscriptionsTable {
   yk_payment_method_id: ColumnType<string | null, string | null | undefined, string | null>;
   auto_renew: ColumnType<boolean, boolean | undefined, boolean>;
   notified_at: TsNullable;
+  dunning_attempts: ColumnType<number, number | undefined, number>;
+  next_charge_at: TsNullable;
   created_at: TsDefault;
   updated_at: TsDefault;
 }

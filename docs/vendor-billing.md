@@ -25,8 +25,10 @@ TOK='X-Vendor-Token: <VENDOR_ADMIN_TOKEN>'
 
 ## Модель
 Два трека продления в одной модели (`subscriptions.payment_method`):
-- **card** (ЮKassa: карта/СБП/ЮMoney) — рекуррент (авто-списание, фаза 4). Без grace.
+- **card** (ЮKassa: карта/СБП/ЮMoney) — рекуррент: карта сохраняется при первом онлайн-платеже (`save_payment_method`), затем планировщик за `BILLING_RENEW_LEAD_DAYS` дней до `paid_till` делает безакцептное списание. При неудаче — dunning (ретраи `BILLING_DUNNING_RETRIES`, напр. 1/3/5 дней, статус `past_due` с grace до следующего ретрая; по исчерпании — `canceled`, `auto_renew` off).
 - **invoice** (счёт юрлицу, банковский перевод) — авто-списания нет; продление после подтверждения поступления, с льготным периодом `grace_until = paid_till + BILLING_INVOICE_GRACE_DAYS`.
+
+Списание идемпотентно: `Idempotence-Key = recur:<accountId>:<paid_till>:<attempt>` на стороне ЮKassa + `payments.payment_id` UNIQUE — двойного списания/продления нет.
 
 `status`: `trial` (пробный) · `active` (оплачено) · `awaiting_invoice_payment` (счёт выставлен, ждём оплату) · `past_due` (истекло) · `canceled` (приостановлено вендором).
 

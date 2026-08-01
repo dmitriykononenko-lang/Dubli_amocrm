@@ -13,7 +13,10 @@ function make(due: Due = [], overdue = 0) {
   } as unknown as SubscriptionsService;
   const notifier = { send: jest.fn().mockResolvedValue(undefined) } as unknown as BillingNotifier;
   const config = { nodeEnv: 'test' } as unknown as AppConfigService;
-  return { sched: new BillingScheduler(subs, notifier, config), subs, notifier };
+  const recurrent = {
+    chargeDueCards: jest.fn().mockResolvedValue({ charged: 0, failed: 0, canceled: 0 }),
+  } as never;
+  return { sched: new BillingScheduler(subs, notifier, config, recurrent), subs, notifier, recurrent };
 }
 
 describe('BillingScheduler.tick', () => {
