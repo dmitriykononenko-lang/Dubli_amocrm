@@ -23,6 +23,7 @@ function make(row: Partial<SubscriptionRow> | null, opts: { paymentExists?: bool
     findInvoiceByDeal: jest.fn().mockResolvedValue(undefined),
     updateInvoice: jest.fn().mockResolvedValue(undefined),
     listInvoices: jest.fn().mockResolvedValue([]),
+    listProducts: jest.fn().mockResolvedValue([{ code: 'dubli', name: 'Дубли', enabled: true }]),
   } as unknown as SubscriptionsRepository;
   const accounts = {
     findById: jest.fn().mockResolvedValue({ account_id: '1', subdomain: 'clientco', installed_at: new Date() }),
@@ -174,6 +175,18 @@ describe('SubscriptionsService — трек «счёт»', () => {
     const grace = new Date(Date.now() + 3 * DAY);
     const { svc } = make({ status: 'active', payment_method: 'invoice', paid_till: past, grace_until: grace });
     expect((await svc.access('1')).allowed).toBe(true);
+  });
+});
+
+describe('SubscriptionsService — мульти-продукт', () => {
+  it('listProducts отдаёт реестр продуктов', async () => {
+    const { svc } = make({ status: 'trial' });
+    await expect(svc.listProducts()).resolves.toEqual([{ code: 'dubli', name: 'Дубли', enabled: true }]);
+  });
+
+  it('access отдаёт product подписки', async () => {
+    const { svc } = make({ status: 'active', paid_till: new Date(Date.now() + 86400_000), product: 'dubli' } as never);
+    expect((await svc.access('1')).product).toBe('dubli');
   });
 });
 

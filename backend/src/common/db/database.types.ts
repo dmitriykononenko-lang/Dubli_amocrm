@@ -177,9 +177,21 @@ export interface AuditLogTable {
 // NUMERIC(12,2) — pg возвращает строкой; на запись принимаем число/строку.
 type NumericStr = ColumnType<string | null, string | number | null | undefined, string | number | null>;
 
-/** Подписка клиента (одна на аккаунт) — источник истины по оплате и дате продления. */
+/** Реестр продуктов (виджетов) — мульти-продуктовый хаб. */
+export interface ProductsTable {
+  code: string;
+  name: string;
+  price_per_user: NumericStr;
+  min_users: ColumnType<number | null, number | null | undefined, number | null>;
+  pipeline_id: ColumnType<string | null, string | number | null | undefined, string | number | null>;
+  enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: TsDefault;
+}
+
+/** Подписка клиента на продукт (account_id + product) — источник истины по оплате/дате. */
 export interface SubscriptionsTable {
   account_id: BigIntStr;
+  product: ColumnType<string, string | undefined, string>;
   status: ColumnType<SubscriptionStatus, SubscriptionStatus | undefined, SubscriptionStatus>;
   users: ColumnType<number | null, number | null | undefined, number | null>;
   months: ColumnType<number | null, number | null | undefined, number | null>;
@@ -200,6 +212,7 @@ export interface SubscriptionsTable {
 export interface InvoicesTable {
   id: IdentityId;
   account_id: BigIntStr;
+  product: ColumnType<string, string | undefined, string>;
   number: string;
   amount: NumericStr;
   period_months: ColumnType<number | null, number | null | undefined, number | null>;
@@ -214,6 +227,7 @@ export interface InvoicesTable {
 export interface PaymentsTable {
   id: IdentityId;
   account_id: BigIntStr;
+  product: ColumnType<string, string | undefined, string>;
   amount: NumericStr;
   users: ColumnType<number | null, number | null | undefined, number | null>;
   months: ColumnType<number | null, number | null | undefined, number | null>;
@@ -241,4 +255,5 @@ export interface DB {
   subscriptions: SubscriptionsTable;
   payments: PaymentsTable;
   invoices: InvoicesTable;
+  products: ProductsTable;
 }

@@ -12,6 +12,7 @@ const DAY_MS = 86400_000;
 
 export interface AccessState {
   allowed: boolean;
+  product: string;
   status: SubscriptionStatus;
   paymentMethod: string;
   paidTill: string | null;
@@ -75,6 +76,7 @@ export class SubscriptionsService {
     const daysLeft = horizon ? Math.ceil((horizon.getTime() - now.getTime()) / DAY_MS) : null;
     return {
       allowed,
+      product: sub.product ?? 'dubli',
       status: sub.status,
       paymentMethod: sub.payment_method,
       paidTill: paidTill ? paidTill.toISOString() : null,
@@ -331,6 +333,7 @@ export class SubscriptionsService {
   async list(f: {
     query?: string;
     status?: SubscriptionStatus;
+    product?: string;
     expiringInDays?: number;
     limit?: number;
     offset?: number;
@@ -341,6 +344,7 @@ export class SubscriptionsService {
     const rows = await this.repo.list({
       query: f.query,
       status: f.status,
+      product: f.product,
       expiringInDays: f.expiringInDays,
       limit,
       offset,
@@ -360,6 +364,7 @@ export class SubscriptionsService {
       return {
         subdomain: r.subdomain,
         accountId: String(r.account_id),
+        product: r.product ?? 'dubli',
         status: r.status ?? 'trial',
         paymentMethod: r.payment_method ?? 'none',
         users: r.users,
@@ -395,6 +400,11 @@ export class SubscriptionsService {
         paidAt: i.paid_at ? new Date(i.paid_at).toISOString() : null,
       })),
     };
+  }
+
+  /** Реестр продуктов (виджетов) для панели/хаба. */
+  listProducts(): Promise<Array<{ code: string; name: string; enabled: boolean }>> {
+    return this.repo.listProducts();
   }
 
   /** subdomain → account_id (для vendor-эндпоинтов, которые адресуются субдоменом). */

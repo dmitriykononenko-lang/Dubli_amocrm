@@ -52,6 +52,7 @@ export const PANEL_HTML = `<!doctype html>
   <main>
     <div class="filters">
       <input id="q" placeholder="поиск по субдомену" oninput="debounced()">
+      <select id="product" onchange="load()"><option value="">все продукты</option></select>
       <select id="status" onchange="load()">
         <option value="">все статусы</option>
         <option value="trial">trial</option><option value="active">active</option>
@@ -67,7 +68,7 @@ export const PANEL_HTML = `<!doctype html>
       <button class="sm" onclick="load()">Обновить</button>
     </div>
     <table><thead><tr>
-      <th>Субдомен</th><th>Статус</th><th>Метод</th><th>Оплачено до</th><th>Grace</th>
+      <th>Субдомен</th><th>Продукт</th><th>Статус</th><th>Метод</th><th>Оплачено до</th><th>Grace</th>
       <th>Триал</th><th>Дней</th><th>Посл. платёж</th><th>Действия</th>
     </tr></thead><tbody id="rows"></tbody></table>
     <div class="empty" id="empty" hidden>Ничего не найдено</div>
@@ -93,14 +94,20 @@ async function logout(){try{await api('/vendor/panel/logout',{method:'POST'})}ca
 let t;function debounced(){clearTimeout(t);t=setTimeout(load,300)}
 function quickAwaiting(){$('#status').value='awaiting_invoice_payment';$('#exp').value='';load()}
 function daysCell(n){if(n==null)return '—';const c=n<0?'days-neg':n<=7?'days-soon':'';return '<span class="'+c+'">'+n+'</span>'}
+async function loadProducts(){
+  const sel=$('#product');if(sel.options.length>1)return;
+  try{const ps=await api('/vendor/billing/products');
+    for(const p of ps){const o=document.createElement('option');o.value=p.code;o.textContent=p.name;sel.appendChild(o)}}catch(e){}
+}
 async function load(){
-  const p=new URLSearchParams();const q=$('#q').value.trim(),s=$('#status').value,e=$('#exp').value;
-  if(q)p.set('query',q);if(s)p.set('status',s);if(e)p.set('expiring_in_days',e);p.set('limit','200');
+  const p=new URLSearchParams();const q=$('#q').value.trim(),s=$('#status').value,e=$('#exp').value,pr=$('#product').value;
+  if(q)p.set('query',q);if(s)p.set('status',s);if(pr)p.set('product',pr);if(e)p.set('expiring_in_days',e);p.set('limit','200');
   let data=[];try{data=await api('/vendor/billing/subscriptions?'+p)}catch(err){if(String(err.message)==='401')return}
-  showApp();$('#empty').hidden=data.length>0;
+  showApp();loadProducts();$('#empty').hidden=data.length>0;
   rows.innerHTML=data.map(r=>{
     const sub=esc(r.subdomain);
     return '<tr><td><span class="sub" onclick="card(\\''+sub+'\\')">'+sub+'</span></td>'+
+      '<td>'+esc(r.product||'dubli')+'</td>'+
       '<td><span class="pill st-'+r.status+'">'+r.status+'</span></td>'+
       '<td>'+(r.paymentMethod||'none')+'</td><td>'+fmt(r.paidTill)+'</td><td>'+fmt(r.graceUntil)+'</td>'+
       '<td>'+fmt(r.trialEndsAt)+'</td><td>'+daysCell(r.daysLeft)+'</td>'+

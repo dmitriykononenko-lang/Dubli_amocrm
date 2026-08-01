@@ -21,6 +21,7 @@ export type InvoiceRow = Selectable<InvoicesTable>;
 export interface SubscriptionListRow {
   account_id: string;
   subdomain: string;
+  product: string | null;
   installed_at: Date;
   status: SubscriptionStatus | null;
   users: number | null;
@@ -35,6 +36,7 @@ export interface SubscriptionListRow {
 export interface ListFilter {
   query?: string;
   status?: SubscriptionStatus;
+  product?: string;
   expiringInDays?: number;
   limit: number;
   offset: number;
@@ -294,6 +296,15 @@ export class SubscriptionsRepository {
       .execute();
   }
 
+  /** Реестр продуктов (виджетов) для хаба/панели. */
+  listProducts(): Promise<Array<{ code: string; name: string; enabled: boolean }>> {
+    return this.db
+      .selectFrom('products')
+      .select(['code', 'name', 'enabled'])
+      .orderBy('name', 'asc')
+      .execute();
+  }
+
   /** Листинг клиентов: все аккаунты LEFT JOIN подписки + сумма последнего платежа. */
   list(f: ListFilter): Promise<SubscriptionListRow[]> {
     let q = this.db
@@ -302,6 +313,7 @@ export class SubscriptionsRepository {
       .select((eb) => [
         'a.account_id as account_id',
         'a.subdomain as subdomain',
+        's.product as product',
         'a.installed_at as installed_at',
         's.status as status',
         's.users as users',
@@ -321,6 +333,7 @@ export class SubscriptionsRepository {
 
     if (f.query) q = q.where('a.subdomain', 'ilike', `%${f.query}%`);
     if (f.status) q = q.where('s.status', '=', f.status);
+    if (f.product) q = q.where('s.product', '=', f.product);
     if (f.expiringInDays != null) {
       const until = new Date(f.now.getTime() + f.expiringInDays * 86400_000);
       q = q.where('s.paid_till', '<=', until).where('s.paid_till', '>', f.now);

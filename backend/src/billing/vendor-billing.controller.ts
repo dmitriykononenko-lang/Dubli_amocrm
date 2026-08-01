@@ -34,6 +34,7 @@ export class VendorBillingController {
   list(
     @Query('query') query?: string,
     @Query('status') status?: string,
+    @Query('product') product?: string,
     @Query('expiring_in_days') expiringInDays?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
@@ -41,10 +42,17 @@ export class VendorBillingController {
     return this.subs.list({
       query: query || undefined,
       status: (status as SubscriptionStatus) || undefined,
+      product: product || undefined,
       expiringInDays: numOrUndef(expiringInDays),
       limit: numOrUndef(limit),
       offset: numOrUndef(offset),
     });
+  }
+
+  /** Реестр продуктов (виджетов) — для фильтра в панели/хабе. */
+  @Get('products')
+  products() {
+    return this.subs.listProducts();
   }
 
   /** Карточка подписки + история платежей. */

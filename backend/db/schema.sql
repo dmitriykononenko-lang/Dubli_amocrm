@@ -213,8 +213,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_account ON audit_log (account_id, created_at DESC);
 
 -- =========================================================================
--- subscriptions — подписка клиента (одна на аккаунт). Источник истины по оплате
--- и дате продления: виджет в amoМаркете «Внешняя оплата», amoCRM «оплачено до» не хранит.
+-- products — реестр наших виджетов (мульти-продуктовый хаб): код, название, тариф, воронка.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS products (
+  code           TEXT        PRIMARY KEY,                    -- 'dubli', 'raspredelenie', …
+  name           TEXT        NOT NULL,
+  price_per_user NUMERIC(12,2),
+  min_users      INTEGER,
+  pipeline_id    BIGINT,                                     -- воронка сделок продукта в koagency
+  enabled        BOOLEAN     NOT NULL DEFAULT TRUE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Продукт по умолчанию — виджет «Дубли».
+INSERT INTO products (code, name) VALUES ('dubli', 'Дубли') ON CONFLICT (code) DO NOTHING;
+
+-- =========================================================================
+-- subscriptions — подписка клиента на ПРОДУКТ (account_id + product). Источник истины по
+-- оплате/дате продления: виджет в amoМаркете «Внешняя оплата», amoCRM «оплачено до» не хранит.
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS subscriptions (
   account_id    BIGINT              PRIMARY KEY REFERENCES accounts(account_id) ON DELETE CASCADE,
@@ -236,6 +251,10 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL D
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;      -- последнее напоминание об истечении
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS dunning_attempts INTEGER NOT NULL DEFAULT 0; -- неудачные списания подряд
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS next_charge_at TIMESTAMPTZ;   -- когда повторить списание карты (dunning)
+-- Мульти-продуктовый хаб: продукт (виджет) подписки. Пока один продукт на аккаунт (PK
+-- остаётся account_id); при появлении второго продукта на аккаунт — перейдём на (account_id, product).
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'dubli';
+CREATE INDEX IF NOT EXISTS idx_subscriptions_product ON subscriptions (product);
 
 -- =========================================================================
 -- payments — история платежей и ручных корректировок (аудит биллинга).
@@ -258,6 +277,7 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE INDEX IF NOT EXISTS idx_payments_account ON payments (account_id, created_at DESC);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'RUB';
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'dubli';
 
 -- =========================================================================
 -- invoices — трек оплаты по счёту (юрлицо, банковский перевод). Продление после
@@ -275,6 +295,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   issued_at      TIMESTAMPTZ    NOT NULL DEFAULT now(),
   paid_at        TIMESTAMPTZ
 );
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'dubli';
 CREATE INDEX IF NOT EXISTS idx_invoices_account ON invoices (account_id, status);
 CREATE INDEX IF NOT EXISTS idx_invoices_deal ON invoices (vendor_deal_id);
 
