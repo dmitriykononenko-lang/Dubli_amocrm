@@ -12,6 +12,8 @@ import { YookassaClient } from './yookassa.client';
 import { SubscriptionsRepository } from './subscriptions.repository';
 import { SubscriptionsService } from './subscriptions.service';
 import { VendorTokenGuard } from './vendor-token.guard';
+import { BillingNotifier } from './billing-notifier';
+import { BillingScheduler } from './billing-scheduler';
 
 @Module({
   imports: [ApiAuthModule, AmocrmModule, AccountsModule],
@@ -28,6 +30,8 @@ import { VendorTokenGuard } from './vendor-token.guard';
     SubscriptionsRepository,
     SubscriptionsService,
     VendorTokenGuard,
+    BillingNotifier,
+    BillingScheduler,
   ],
   exports: [BillingService, SubscriptionsService],
 })

@@ -189,6 +189,7 @@ export interface SubscriptionsTable {
   grace_until: TsNullable;
   yk_payment_method_id: ColumnType<string | null, string | null | undefined, string | null>;
   auto_renew: ColumnType<boolean, boolean | undefined, boolean>;
+  notified_at: TsNullable;
   created_at: TsDefault;
   updated_at: TsDefault;
 }

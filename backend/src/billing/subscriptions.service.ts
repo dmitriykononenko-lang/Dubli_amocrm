@@ -237,6 +237,36 @@ export class SubscriptionsService {
     return { paidTill: newPaidTill.toISOString() };
   }
 
+  /** Подписки, которым пора напомнить об истечении (в окне BILLING_NOTIFY_LEAD_DAYS). */
+  async listDueReminders(): Promise<
+    Array<{ accountId: string; subdomain: string; paymentMethod: string; paidTill: string; daysLeft: number }>
+  > {
+    const lead = this.config.billingNotifyLeadDays;
+    if (lead <= 0) return [];
+    const now = new Date();
+    const rows = await this.repo.dueForReminder(now, lead);
+    return rows.map((r) => {
+      const paidTill = new Date(r.paid_till);
+      return {
+        accountId: String(r.account_id),
+        subdomain: r.subdomain,
+        paymentMethod: r.payment_method,
+        paidTill: paidTill.toISOString(),
+        daysLeft: Math.ceil((paidTill.getTime() - now.getTime()) / DAY_MS),
+      };
+    });
+  }
+
+  /** Отметить, что напоминание отправлено (гасит повтор в этом окне). */
+  async markNotified(accountId: string): Promise<void> {
+    await this.repo.setNotified(accountId, new Date());
+  }
+
+  /** Пометить просроченные подписки past_due. Возвращает число помеченных. */
+  async markOverdue(): Promise<number> {
+    return this.repo.markOverdue(new Date());
+  }
+
   /** Включить/выключить авто-продление карты (рекуррент). */
   async setAutoRenew(accountId: string, enabled: boolean, actor?: string): Promise<{ autoRenew: boolean }> {
     await this.ensure(accountId);

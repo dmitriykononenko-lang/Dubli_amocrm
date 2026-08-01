@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type Kysely, type Selectable } from 'kysely';
+import { sql, type Kysely, type Selectable } from 'kysely';
 import { KYSELY } from '../common/db/kysely.tokens';
 import { requireAccountId } from '../common/db/account-scope';
 import type {
@@ -185,6 +185,57 @@ export class SubscriptionsRepository {
         paid_till: p.paidTill,
       })
       .execute();
+  }
+
+  /**
+   * Подписки, которым пора напомнить об истечении: paid_till в окне (now, now+leadDays] и
+   * в этом предыстечном окне ещё не напоминали (notified_at пуст или раньше paid_till−leadDays).
+   */
+  async dueForReminder(
+    now: Date,
+    leadDays: number,
+  ): Promise<Array<{ account_id: string; subdomain: string; payment_method: PaymentMethodType; paid_till: Date }>> {
+    const until = new Date(now.getTime() + leadDays * 86400_000);
+    return this.db
+      .selectFrom('subscriptions as s')
+      .innerJoin('accounts as a', 'a.account_id', 's.account_id')
+      .select([
+        's.account_id as account_id',
+        'a.subdomain as subdomain',
+        's.payment_method as payment_method',
+        's.paid_till as paid_till',
+      ])
+      .where('s.status', 'in', ['active', 'awaiting_invoice_payment'])
+      .where('s.paid_till', 'is not', null)
+      .where('s.paid_till', '>', now)
+      .where('s.paid_till', '<=', until)
+      .where((eb) =>
+        eb.or([
+          eb('s.notified_at', 'is', null),
+          eb('s.notified_at', '<', sql<Date>`s.paid_till - make_interval(days => ${leadDays})`),
+        ]),
+      )
+      .execute() as Promise<
+      Array<{ account_id: string; subdomain: string; payment_method: PaymentMethodType; paid_till: Date }>
+    >;
+  }
+
+  async setNotified(accountId: string, at: Date): Promise<void> {
+    requireAccountId(accountId);
+    await this.db.updateTable('subscriptions').set({ notified_at: at }).where('account_id', '=', accountId).execute();
+  }
+
+  /** Просроченные (paid_till/grace/trial в прошлом) → past_due. Возвращает число помеченных. */
+  async markOverdue(now: Date): Promise<number> {
+    const res = await this.db
+      .updateTable('subscriptions')
+      .set({ status: 'past_due', updated_at: now })
+      .where('status', 'in', ['trial', 'active', 'awaiting_invoice_payment'])
+      .where((eb) => eb.or([eb('paid_till', 'is', null), eb('paid_till', '<', now)]))
+      .where((eb) => eb.or([eb('grace_until', 'is', null), eb('grace_until', '<', now)]))
+      .where((eb) => eb.or([eb('trial_ends_at', 'is', null), eb('trial_ends_at', '<', now)]))
+      .executeTakeFirst();
+    return Number(res.numUpdatedRows ?? 0);
   }
 
   listPayments(accountId: string, limit = 50): Promise<PaymentRow[]> {

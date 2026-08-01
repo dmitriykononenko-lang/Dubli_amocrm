@@ -233,6 +233,7 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method payment_method
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS grace_until TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS yk_payment_method_id TEXT;   -- токен сохранённой карты ЮKassa
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;      -- последнее напоминание об истечении
 
 -- =========================================================================
 -- payments — история платежей и ручных корректировок (аудит биллинга).
