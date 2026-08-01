@@ -104,6 +104,13 @@ export const envSchema = z.object({
   // Вебхук уведомлений вендору (Telegram/incoming webhook) — опционально (фаза 3).
   BILLING_NOTIFY_TELEGRAM_WEBHOOK: z.string().optional(),
 
+  // Вендор-панель /vendor/panel: логин оператора (роль billing_admin). Отдельно от
+  // VENDOR_ADMIN_TOKEN (его в браузер не кладём). Пусто → вход по паролю выключен.
+  BILLING_ADMIN_USER: z.string().optional(),
+  BILLING_ADMIN_PASSWORD: z.string().optional(),
+  // Секрет подписи сессионной cookie панели. Пусто → берём VENDOR_ADMIN_TOKEN.
+  BILLING_ADMIN_SESSION_SECRET: z.string().optional(),
+
   DATABASE_URL_TEST: z.string().optional(),
 });
 

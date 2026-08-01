@@ -237,6 +237,24 @@ export class SubscriptionsService {
     return { paidTill: newPaidTill.toISOString() };
   }
 
+  /** Включить/выключить авто-продление карты (рекуррент). */
+  async setAutoRenew(accountId: string, enabled: boolean, actor?: string): Promise<{ autoRenew: boolean }> {
+    await this.ensure(accountId);
+    await this.repo.update(accountId, { auto_renew: enabled });
+    await this.repo.insertPayment({
+      accountId,
+      amount: null,
+      users: null,
+      months: null,
+      source: 'manual',
+      paymentId: null,
+      reason: `auto_renew = ${enabled}`,
+      actor: actor ?? 'vendor-admin',
+      paidTill: null,
+    });
+    return { autoRenew: enabled };
+  }
+
   /** Приостановка: доступ закрыт (status=canceled), дата сохраняется. */
   async suspend(accountId: string, input: { reason?: string; actor?: string }): Promise<void> {
     const sub = await this.ensure(accountId);

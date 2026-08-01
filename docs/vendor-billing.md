@@ -4,9 +4,19 @@
 Источник истины — наш бэкенд (`subscriptions.paid_till`). Эти эндпоинты дают вендору
 (Ko:agency) посмотреть/продлить/приостановить подписки клиентов.
 
-## Доступ
-Все запросы — с заголовком `X-Vendor-Token: $VENDOR_ADMIN_TOKEN` (из `.env`, в git не
-коммитится). Без валидного токена — `401`. Если `VENDOR_ADMIN_TOKEN` не задан, роуты закрыты.
+## Панель оператора (`/vendor/panel`)
+Веб-панель для оператора: список подписок с фильтрами (статус, срок ≤ 7/14/30 дн, поиск по
+субдомену, «ожидают оплаты по счёту»), карточка с историей платежей/счетов, кнопки
+продлить / стоп / снять / отметить счёт оплаченным / auto-renew.
+
+Вход: `BILLING_ADMIN_USER` / `BILLING_ADMIN_PASSWORD` (в `.env`). После логина ставится
+HttpOnly-cookie (подписана `BILLING_ADMIN_SESSION_SECRET`, фолбэк — `VENDOR_ADMIN_TOKEN`),
+роль `billing_admin`. `VENDOR_ADMIN_TOKEN` в браузер не попадает — панель ходит на
+`/vendor/billing/*` по cookie. Открыть: `https://dubli.koagency.ru/vendor/panel`.
+
+## Доступ к API
+`/vendor/billing/*` принимает **либо** заголовок `X-Vendor-Token: $VENDOR_ADMIN_TOKEN`
+(curl/автоматизация), **либо** сессионную cookie панели (браузер). Иначе — `401`.
 
 ```bash
 BASE=https://dubli.koagency.ru
@@ -68,6 +78,13 @@ curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' \
 curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' -d '{}' \
   "$BASE/vendor/billing/subscriptions/clientco/resume"
 # → { status }
+```
+
+### Авто-продление карты (вкл/выкл)
+```bash
+curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' -d '{"enabled":false}' \
+  "$BASE/vendor/billing/subscriptions/clientco/auto-renew"
+# → { autoRenew }
 ```
 
 ## Трек «счёт» — подтверждение оплаты

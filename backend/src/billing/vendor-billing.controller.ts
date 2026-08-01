@@ -85,4 +85,11 @@ export class VendorBillingController {
   markInvoicePaid(@Param('number') number: string, @Body() body: MutateBody) {
     return this.subs.markInvoicePaid(number, { actor: body?.actor ?? 'vendor-admin' });
   }
+
+  /** Включить/выключить авто-продление карты. */
+  @Post('subscriptions/:subdomain/auto-renew')
+  async autoRenew(@Param('subdomain') subdomain: string, @Body() body: { enabled?: boolean; actor?: string }) {
+    const accountId = await this.subs.resolveAccountId(subdomain);
+    return this.subs.setAutoRenew(accountId, Boolean(body?.enabled), body?.actor);
+  }
 }

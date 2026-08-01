@@ -177,4 +177,15 @@ export class AppConfigService {
   get billingNotifyTelegramWebhook(): string | undefined {
     return this.get('BILLING_NOTIFY_TELEGRAM_WEBHOOK');
   }
+  /** Логин оператора вендор-панели (роль billing_admin). */
+  get billingAdminUser(): string | undefined {
+    return this.get('BILLING_ADMIN_USER');
+  }
+  get billingAdminPassword(): string | undefined {
+    return this.get('BILLING_ADMIN_PASSWORD');
+  }
+  /** Секрет подписи сессионной cookie панели; фолбэк — VENDOR_ADMIN_TOKEN. */
+  get billingAdminSessionSecret(): string | undefined {
+    return this.get('BILLING_ADMIN_SESSION_SECRET') ?? this.vendorAdminToken;
+  }
 }

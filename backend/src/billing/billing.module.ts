@@ -6,6 +6,7 @@ import { BillingController } from './billing.controller';
 import { BillingWebhookController } from './billing-webhook.controller';
 import { VendorBillingController } from './vendor-billing.controller';
 import { VendorWebhookController } from './vendor-webhook.controller';
+import { VendorPanelController } from './vendor-panel.controller';
 import { BillingService } from './billing.service';
 import { YookassaClient } from './yookassa.client';
 import { SubscriptionsRepository } from './subscriptions.repository';
@@ -19,6 +20,7 @@ import { VendorTokenGuard } from './vendor-token.guard';
     BillingWebhookController,
     VendorBillingController,
     VendorWebhookController,
+    VendorPanelController,
   ],
   providers: [
     BillingService,

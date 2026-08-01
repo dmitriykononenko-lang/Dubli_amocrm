@@ -1,34 +1,36 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { AppConfigService } from '../config/app-config.service';
+import { SESSION_COOKIE, parseCookies, safeEqual, verifySession } from './vendor-session';
 
 /**
- * Доступ к /vendor/billing/* только по заголовку X-Vendor-Token, равному VENDOR_ADMIN_TOKEN
- * из .env. Если токен не задан — роуты закрыты (401), а не открыты. Сравнение постоянного времени.
+ * Доступ к /vendor/billing/* — двумя способами:
+ *  1) заголовок X-Vendor-Token = VENDOR_ADMIN_TOKEN (curl/автоматизация);
+ *  2) сессионная cookie вендор-панели (роль billing_admin) — для браузера, чтобы не
+ *     класть VENDOR_ADMIN_TOKEN в JS.
+ * Если ни один способ не настроен/не прошёл — 401. Сравнение токена постоянного времени.
  */
 @Injectable()
 export class VendorTokenGuard implements CanActivate {
   constructor(private readonly config: AppConfigService) {}
 
   canActivate(ctx: ExecutionContext): boolean {
-    const expected = this.config.vendorAdminToken;
-    if (!expected) {
-      throw new UnauthorizedException('Вендор-доступ выключен (VENDOR_ADMIN_TOKEN не задан)');
-    }
     const req = ctx.switchToHttp().getRequest<Request>();
-    const provided = req.header('x-vendor-token') ?? '';
-    if (!VendorTokenGuard.safeEqual(provided, expected)) {
-      throw new UnauthorizedException('Неверный или отсутствующий X-Vendor-Token');
-    }
-    return true;
+    if (this.tokenOk(req) || this.sessionOk(req)) return true;
+    throw new UnauthorizedException('Нужен X-Vendor-Token или вход в панель');
   }
 
-  /** Сравнение без утечки длины/префикса по времени. */
-  private static safeEqual(a: string, b: string): boolean {
-    const ab = Buffer.from(a, 'utf8');
-    const bb = Buffer.from(b, 'utf8');
-    if (ab.length !== bb.length) return false;
-    return timingSafeEqual(ab, bb);
+  private tokenOk(req: Request): boolean {
+    const expected = this.config.vendorAdminToken;
+    if (!expected) return false;
+    const provided = req.header('x-vendor-token') ?? '';
+    return safeEqual(provided, expected);
+  }
+
+  private sessionOk(req: Request): boolean {
+    const secret = this.config.billingAdminSessionSecret;
+    if (!secret) return false;
+    const sess = verifySession(secret, parseCookies(req.header('cookie'))[SESSION_COOKIE]);
+    return Boolean(sess && sess.role === 'billing_admin');
   }
 }
