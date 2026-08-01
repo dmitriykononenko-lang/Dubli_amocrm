@@ -111,6 +111,11 @@ export const envSchema = z.object({
   // Секрет подписи сессионной cookie панели. Пусто → берём VENDOR_ADMIN_TOKEN.
   BILLING_ADMIN_SESSION_SECRET: z.string().optional(),
 
+  // Авто-сверка поступлений по счетам (фаза 5, за фича-флагом). Провайдер-агностик:
+  // банк/Adesk шлёт входящие платежи на /vendor/billing/webhook/bank-incoming, матчинг по
+  // номеру счёта (DUB-…) из назначения. Выкл по умолчанию — старт с ручного/стадийного.
+  BILLING_BANK_RECONCILE: emptyable(envBool.default(false)),
+
   DATABASE_URL_TEST: z.string().optional(),
 });
 

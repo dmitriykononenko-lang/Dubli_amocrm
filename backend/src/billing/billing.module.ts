@@ -15,6 +15,7 @@ import { VendorTokenGuard } from './vendor-token.guard';
 import { BillingNotifier } from './billing-notifier';
 import { BillingScheduler } from './billing-scheduler';
 import { BillingRecurrentService } from './billing-recurrent.service';
+import { BankReconcileService } from './bank-reconcile.service';
 
 @Module({
   imports: [ApiAuthModule, AmocrmModule, AccountsModule],
@@ -34,6 +35,7 @@ import { BillingRecurrentService } from './billing-recurrent.service';
     BillingNotifier,
     BillingScheduler,
     BillingRecurrentService,
+    BankReconcileService,
   ],
   exports: [BillingService, SubscriptionsService],
 })

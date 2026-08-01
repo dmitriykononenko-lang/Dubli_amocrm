@@ -188,4 +188,8 @@ export class AppConfigService {
   get billingAdminSessionSecret(): string | undefined {
     return this.get('BILLING_ADMIN_SESSION_SECRET') ?? this.vendorAdminToken;
   }
+  /** Авто-сверка поступлений по счетам (фича-флаг, фаза 5). */
+  get billingBankReconcile(): boolean {
+    return this.get('BILLING_BANK_RECONCILE');
+  }
 }
