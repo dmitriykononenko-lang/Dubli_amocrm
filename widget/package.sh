@@ -59,18 +59,25 @@ BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 cp -r manifest.json script.js i18n images "$BUILD/"
 python3 - "$BUILD/manifest.json" "$CODE" "$SECRET" <<'PY'
-import json, sys
+import json, sys, os
 path, code, secret = sys.argv[1], sys.argv[2], sys.argv[3]
 m = json.load(open(path, encoding="utf-8"))
 m["widget"]["code"] = code
 m["widget"]["secret_key"] = secret
+# Приватная сборка (WIDGET_PRIVATE=1): убрать публично-маркетплейсные поля —
+# кабинет приватной интеграции их может отклонять (гайд §3.5). Исходный
+# manifest.json не трогаем, правки только в копии архива.
+private = os.environ.get("WIDGET_PRIVATE", "").strip().lower() in ("1", "true", "yes", "y")
+if private:
+    for k in ("free", "countries"):
+        m.pop(k, None)
 json.dump(m, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 # Лёгкая валидация: обязательные поля на месте.
 w = m["widget"]
 for f in ("name", "version", "interface_version", "code", "secret_key"):
     assert w.get(f) not in (None, ""), f"widget.{f} пустой"
 assert isinstance(w["installation"], bool), "installation должен быть true/false (boolean)"
-print(f"manifest ok — code={code[:4]}…, version={w['version']}")
+print(f"manifest ok — code={code[:4]}…, version={w['version']}, private={private}")
 PY
 
 # 4. Zip: manifest.json в КОРНЕ архива, без мусора.
