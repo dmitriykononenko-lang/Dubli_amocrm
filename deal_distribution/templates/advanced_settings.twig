@@ -1,0 +1,108 @@
+{# Страница «Правила распределения»: пул менеджеров, стратегия, воронки, правила, SLA.
+   Данные приходят из script.js: i18n (self.i18n('adv')), meta (users/pipelines), config (текущие настройки).
+   Все id — строки (нормализованы в JS), чтобы работал оператор Twig `in`. #}
+<div class="dd-wrap">
+  <div class="dd-brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="6" cy="6" r="3" stroke="#fff" stroke-width="2"/>
+      <circle cx="18" cy="5" r="2.4" stroke="#fff" stroke-width="2"/>
+      <circle cx="18" cy="13" r="2.4" stroke="#fff" stroke-width="2"/>
+      <path d="M9 6h4M13 6l3-1M13 6l3 6.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span>KO:AGENCY</span>
+    <span class="dd-brand__sub">{{ i18n.brand_sub }}</span>
+  </div>
+
+  <div class="dd-sec">
+    <div class="dd-h">{{ i18n.pool }}</div>
+    <div class="dd-hint">{{ i18n.pool_hint }}</div>
+    <div class="dd-grid">
+      {% for u in meta.users %}
+        <label class="dd-chk"><input type="checkbox" class="js-dd-pool" value="{{ u.id }}"{% if u.id in config.pool %} checked{% endif %}> {{ u.name }}</label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="dd-sec">
+    <div class="dd-h">{{ i18n.strategy }}</div>
+    <label class="dd-rad"><input type="radio" name="dd-strategy" class="js-dd-strategy" value="round_robin"{% if config.strategy == 'round_robin' %} checked{% endif %}> {{ i18n.strategy_rr }}</label>
+    <label class="dd-rad"><input type="radio" name="dd-strategy" class="js-dd-strategy" value="by_load"{% if config.strategy == 'by_load' %} checked{% endif %}> {{ i18n.strategy_load }}</label>
+    <label class="dd-rad"><input type="radio" name="dd-strategy" class="js-dd-strategy" value="by_rules"{% if config.strategy == 'by_rules' %} checked{% endif %}> {{ i18n.strategy_rules }}</label>
+  </div>
+
+  <div class="dd-sec">
+    <div class="dd-h">{{ i18n.scope }}</div>
+    <div class="dd-hint">{{ i18n.scope_all }}</div>
+    <div class="dd-grid">
+      {% for p in meta.pipelines %}
+        <label class="dd-chk"><input type="checkbox" class="js-dd-scope" value="{{ p.id }}"{% if p.id in config.scope %} checked{% endif %}> {{ p.name }}</label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="dd-sec">
+    <label class="dd-chk"><input type="checkbox" class="js-dd-skip"{% if config.skip_absent %} checked{% endif %}> {{ i18n.skip_absent }}</label>
+    <div class="dd-hint">{{ i18n.skip_absent_hint }}</div>
+  </div>
+
+  <div class="dd-sec">
+    <div class="dd-h">{{ i18n.rules }}</div>
+    <div class="dd-hint">{{ i18n.rules_hint }}</div>
+    <table class="dd-rules"><tbody class="js-dd-rules">
+      {% for r in config.rules %}
+        <tr class="js-dd-rule">
+          <td class="dd-when">{{ i18n.rule_when }}</td>
+          <td>
+            <select class="js-dd-rc-field">
+              <option value="source"{% if r.field == 'source' %} selected{% endif %}>{{ i18n.cond_source }}</option>
+              <option value="pipeline"{% if r.field == 'pipeline' %} selected{% endif %}>{{ i18n.cond_pipeline }}</option>
+              <option value="budget_gt"{% if r.field == 'budget_gt' %} selected{% endif %}>{{ i18n.cond_budget_gt }}</option>
+              <option value="tag"{% if r.field == 'tag' %} selected{% endif %}>{{ i18n.cond_tag }}</option>
+            </select>
+          </td>
+          <td><input class="js-dd-rc-value" value="{{ r.value }}" placeholder="{{ i18n.rule_value }}"></td>
+          <td class="dd-then">{{ i18n.rule_then }}</td>
+          <td>
+            <select class="js-dd-rc-user">
+              {% for u in meta.users %}<option value="{{ u.id }}"{% if r.user_id == u.id %} selected{% endif %}>{{ u.name }}</option>{% endfor %}
+            </select>
+          </td>
+          <td><span class="js-dd-rule-del dd-del" title="{{ i18n.no_rules }}">×</span></td>
+        </tr>
+      {% endfor %}
+    </tbody></table>
+    <button type="button" class="js-dd-rule-add dd-btn">+ {{ i18n.add_rule }}</button>
+  </div>
+
+  <div class="dd-sec dd-sla">
+    <label class="dd-chk"><input type="checkbox" class="js-dd-sla"{% if config.sla.enabled %} checked{% endif %}> {{ i18n.sla_enable }}</label>
+    <span class="dd-slamin">{{ i18n.sla_minutes }}: <input type="number" min="1" class="js-dd-sla-min" value="{{ config.sla.minutes | default(15) }}"></span>
+  </div>
+
+  <div class="dd-actions">
+    <button type="button" class="js-dd-save dd-btn dd-btn_primary">{{ i18n.save }}</button>
+  </div>
+</div>
+
+<style>
+  .dd-wrap{max-width:820px;font-size:13px;color:#2b2f33}
+  .dd-brand{display:flex;align-items:center;gap:10px;margin:0 0 16px;padding:12px 16px;background:#0f766e;color:#fff;border-radius:4px;font-weight:bold;font-size:16px;letter-spacing:1px}
+  .dd-brand svg{display:block;flex-shrink:0}
+  .dd-brand__sub{font-weight:normal;font-size:13px;opacity:.9;margin-left:auto;letter-spacing:0}
+  .dd-sec{margin:0 0 18px;padding:0 0 16px;border-bottom:1px solid #eceff1}
+  .dd-h{font-weight:600;margin:0 0 4px}
+  .dd-hint{color:#7a8085;font-size:12px;margin:0 0 8px}
+  .dd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
+  .dd-chk,.dd-rad{display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0}
+  .dd-rad{margin:2px 0}
+  .dd-rules{width:100%;border-collapse:collapse;margin:6px 0}
+  .dd-rules td{padding:4px 6px;vertical-align:middle}
+  .dd-when,.dd-then{color:#7a8085;font-size:12px}
+  .dd-rules select,.dd-rules input,.dd-slamin input{border:1px solid #d5dadd;border-radius:3px;padding:4px 6px;font-size:13px}
+  .dd-slamin input{width:64px;margin-left:4px}
+  .dd-del{cursor:pointer;color:#c0392b;font-size:18px;line-height:1;padding:0 4px}
+  .dd-btn{border:1px solid #cfd6da;background:#fff;border-radius:3px;padding:6px 12px;cursor:pointer;font-size:13px}
+  .dd-btn_primary{background:#0f766e;border-color:#0f766e;color:#fff}
+  .dd-actions{margin-top:8px}
+  .dd-sla{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+</style>

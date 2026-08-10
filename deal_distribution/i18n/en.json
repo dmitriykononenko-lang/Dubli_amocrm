@@ -1,0 +1,66 @@
+{
+  "widget": {
+    "name": "Deal Distribution",
+    "short_description": "Auto-assign incoming deals to managers",
+    "description": "The widget automatically assigns the responsible manager to incoming deals using a chosen strategy: round-robin, by load (fewest open deals) or by rules (source, pipeline, budget, tag → manager). It respects a manager pool and selected pipelines, can skip absent managers and reassign a deal if the manager doesn't pick it up in time (SLA). Rules are configured on a dedicated page; the deal card shows who it was assigned to and why."
+  },
+  "settings": {
+    "backend_url": "Widget backend URL (https)",
+    "api_token": "Backend access key (X-Security-Key header; equals API_SECURITY_KEY on the server)"
+  },
+  "advanced": {
+    "title": "Distribution rules"
+  },
+  "notify": {
+    "saved": "Settings saved",
+    "save_failed": "Couldn't save settings",
+    "load_failed": "Couldn't load settings",
+    "meta_failed": "Couldn't fetch account data",
+    "need_https": "Backend URL must start with https://",
+    "reassign_ok": "Deal reassigned",
+    "reassign_failed": "Couldn't reassign"
+  },
+  "card": {
+    "title": "Distribution",
+    "loading": "Loading…",
+    "assigned_to": "Assigned",
+    "at": "When",
+    "reason": "Reason",
+    "strategy": "Strategy",
+    "not_distributed": "This deal was not distributed by the widget",
+    "not_configured": "Backend not configured",
+    "error": "No distribution data",
+    "reassign": "Reassign"
+  },
+  "adv": {
+    "brand_sub": "Deal Distribution",
+    "pool": "Manager pool",
+    "pool_hint": "Who takes part in distribution",
+    "strategy": "Strategy",
+    "strategy_rr": "Round-robin",
+    "strategy_load": "By load (fewest open deals)",
+    "strategy_rules": "By rules",
+    "scope": "Pipelines (distribution scope)",
+    "scope_all": "Empty = all pipelines",
+    "skip_absent": "Skip absent managers",
+    "skip_absent_hint": "Don't assign to those off-schedule/offline",
+    "rules": "Rules (for the \"by rules\" strategy)",
+    "rules_hint": "Checked top to bottom; the first match assigns the manager",
+    "rule_when": "If",
+    "rule_value": "value",
+    "rule_then": "assign",
+    "add_rule": "Add rule",
+    "no_rules": "No rules yet",
+    "cond_source": "Source",
+    "cond_pipeline": "Pipeline (id)",
+    "cond_budget_gt": "Budget greater than",
+    "cond_tag": "Tag",
+    "sla_enable": "Reassign if the manager doesn't pick up the deal",
+    "sla_minutes": "After how many minutes",
+    "save": "Save"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "Error"
+  }
+}
