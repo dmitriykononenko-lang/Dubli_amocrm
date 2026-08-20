@@ -26,7 +26,7 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var STYLE_ID = 'dub-styles';
     // Метка сборки — видна в data-v элемента стилей, нужна для диагностики,
     // что в браузере загружена актуальная версия скрипта
-    var WIDGET_BUILD = '2026-07-22.11';
+    var WIDGET_BUILD = '2026-08-20.12';
 
     // Сопоставление области карточки (system().area) с типом сущности API v4
     var AREA_ENTITY = [
@@ -294,7 +294,42 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         /* чипы способов оплаты */
         '.dub-pay__methods{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #f0f1f3}',
         '.dub-pay__methods-label{color:#9aa1ac;font-size:12px}',
-        '.dub-pay__chip{border:1px solid #e1e3e7;border-radius:7px;padding:4px 10px;font-size:12px;color:#5a6472;background:#fff}'
+        '.dub-pay__chip{border:1px solid #e1e3e7;border-radius:7px;padding:4px 10px;font-size:12px;color:#5a6472;background:#fff}',
+        /* ===== Массовая очистка: карточный вид со сканом и прогрессом ===== */
+        '.dub-card .dub-scan__controls{display:flex;align-items:center;gap:10px;margin:0}',
+        '.dub-card .dub-scan__controls .dub-scan__entity{flex:0 0 auto;min-width:150px;padding:9px 10px;border:1px solid #e1e3e7;border-radius:8px;font-size:14px;color:#141414;background:#fff}',
+        '.dub-card .dub-scan__controls .dub-scan__start{flex:1 1 auto;padding:10px 16px;font-weight:600}',
+        '.dub-scan__list{margin-top:14px}',
+        '.dub-scan__list:empty{margin-top:0}',
+        '.dub-card .dub-scan__job{display:block;padding:14px 0 4px;border-top:1px solid #f0f1f3;border-bottom:0}',
+        '.dub-scan__list>.dub-scan__job:first-child{border-top:0;padding-top:4px}',
+        '.dub-scan__jobhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}',
+        '.dub-scan__jobhead .dub-scan__entity-name{min-width:0;font-weight:600;color:#141414;text-transform:capitalize}',
+        '.dub-scan__bar{height:8px;border-radius:6px;background:#eef0f2;overflow:hidden}',
+        '.dub-scan__bar-fill{display:block;height:100%;border-radius:6px;background:#1f9d57;transition:width .3s}',
+        '.dub-scan__bar-fill_error{background:#e05c5c}',
+        '.dub-scan__summary{margin-top:10px}',
+        '.dub-scan__done{font-size:14px;font-weight:600;color:#141414;margin-bottom:2px}',
+        '.dub-scan__stats{font-size:13px;color:#8a919a;line-height:1.5}',
+        '.dub-scan__num{color:#d22730;font-weight:700}',
+        /* ===== Найденные дубли: карточный вид ===== */
+        '.dub-found__top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}',
+        '.dub-found__mergeall{flex:0 0 auto;font-size:13px;font-weight:600;color:#d22730;cursor:pointer;text-decoration:none}',
+        '.dub-found__mergeall:hover{text-decoration:underline}',
+        '.dub-found__mergeall b{color:#d22730;font-weight:700}',
+        '.dub-card .dub-found__controls{display:flex;align-items:center;gap:10px;margin:0 0 4px}',
+        '.dub-card .dub-found__controls .dub-found__entity{flex:0 0 auto;min-width:150px;padding:9px 10px;border:1px solid #e1e3e7;border-radius:8px;font-size:14px;color:#141414;background:#fff}',
+        '.dub-card .dub-found__controls .dub-found__show{flex:0 0 auto;padding:10px 18px;font-weight:600}',
+        '.dub-found__list{margin-top:12px}',
+        '.dub-found__list:empty{margin-top:0}',
+        '.dub-card .dub-found__group{border:1px solid #eef0f2;border-radius:10px;padding:12px 14px;margin-bottom:10px}',
+        '.dub-card .dub-found__group:last-child{margin-bottom:0}',
+        '.dub-card .dub-found__head{display:flex;align-items:center;gap:10px;margin-bottom:8px}',
+        '.dub-found__badge{flex:0 0 auto;background:#fdeced;color:#d22730;font-size:12px;font-weight:700;padding:2px 10px;border-radius:20px;white-space:nowrap}',
+        '.dub-card .dub-found__key{font-weight:600;color:#141414;font-size:14px}',
+        '.dub-card .dub-found__merge{margin-left:auto;flex:0 0 auto;padding:6px 16px;font-size:13px;font-weight:600}',
+        '.dub-card .dub-found__rec{font-size:13px;color:#41474f;padding:3px 0}',
+        '.dub-card .dub-found__rec-id{color:#9aa1ac;font-size:12px}'
       ].join('');
       var styleEl = document.createElement('style');
       styleEl.id = STYLE_ID;
@@ -893,7 +928,9 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
 
     // Вкладка «Оплата»: тариф, число пользователей, срок, сумма, онлайн-оплата и счёт.
     function payPaneHtml(status) {
-      var activeId = BILLING.plans[0].id;
+      // По умолчанию выбираем тариф с бонусом (месяцев больше, чем оплачивается —
+      // в макете акцент на 12 мес); если бонусных нет, берём первый план.
+      var activeId = (BILLING.plans.filter(function (p) { return p.months - p.pay > 0; })[0] || BILLING.plans[0]).id;
       var calc = calcPaySum((status && status.paid_users) || accountUsersCount(), activeId);
       var paid = status && status.paid_until;
       var statusLine = paid
@@ -1023,6 +1060,16 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       }
     }
 
+    // Число с красным акцентом (#d22730) для строк-итогов сканирования.
+    function scanNum(v) {
+      return '<b class="dub-scan__num">' + escapeHtml(String(v)) + '</b>';
+    }
+
+    // Есть ли у job числовое поле (0 — валидно, null/'' — нет).
+    function jobHas(j, key) {
+      return j[key] !== undefined && j[key] !== null && j[key] !== '';
+    }
+
     function scanRowHtml(j) {
       var ctrl = '';
       if (isActiveScan(j)) {
@@ -1032,14 +1079,47 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         ctrl = '<button type="button" class="dub__btn dub-scan__resume" data-id="' +
           escapeHtml(j.id) + '">' + escapeHtml(t('settings.scan_resume', 'Продолжить')) + '</button>';
       }
+
+      var progress = parseInt(j.progress, 10) || 0;
+      var hasTotal = jobHas(j, 'total');
+      var total = hasTotal ? (parseInt(j.total, 10) || 0) : null;
+      var isDone = j.status === 'done';
+      var pct = isDone ? 100
+        : (hasTotal && total > 0 ? Math.max(0, Math.min(100, Math.round(progress / total * 100)))
+        : (isActiveScan(j) ? 45 : 0));
+
+      // Строка 1: «Сканирование завершено 1240/1240» (или текущий статус + прогресс).
+      var doneLabel = isDone ? t('settings.scan_done', 'Сканирование завершено') : scanStatusLabel(j.status);
+      var countStr = hasTotal ? (scanNum(progress) + '/' + scanNum(total)) : scanNum(progress);
+      var line1 = '<div class="dub-scan__done">' + escapeHtml(doneLabel) + ' ' + countStr + '</div>';
+
+      // Строка 2: «Просканировано N · найдено F дубля в G группах» — только имеющиеся числа.
+      var parts = [];
+      parts.push(escapeHtml(t('settings.scan_scanned', 'Просканировано')) + ' ' +
+        (hasTotal ? scanNum(total) : scanNum(progress)));
+      if (jobHas(j, 'found')) {
+        var foundPart = escapeHtml(t('settings.scan_found', 'найдено')) + ' ' +
+          scanNum(parseInt(j.found, 10) || 0);
+        if (jobHas(j, 'groups')) {
+          foundPart += ' ' + escapeHtml(t('settings.scan_dups_in', 'дубля в')) + ' ' +
+            scanNum(parseInt(j.groups, 10) || 0) + ' ' +
+            escapeHtml(t('settings.scan_groups', 'группах'));
+        }
+        parts.push(foundPart);
+      }
+      var line2 = '<div class="dub-scan__stats">' + parts.join(' · ') + '</div>';
+
+      var fillCls = 'dub-scan__bar-fill' + (j.status === 'error' ? ' dub-scan__bar-fill_error' : '');
+
       return '<div class="dub-scan__job" data-id="' + escapeHtml(j.id) + '">' +
-        '<span class="dub-scan__entity-name">' + escapeHtml(j.entity_type) + '</span>' +
-        '<span class="dub-scan__status dub-scan__status_' + escapeHtml(j.status) + '">' +
-          escapeHtml(scanStatusLabel(j.status)) + '</span>' +
-        '<span class="dub-scan__progress">' +
-          escapeHtml(t('settings.scan_progress', 'обработано')) + ': ' +
-          escapeHtml(String(j.progress || 0)) + '</span>' +
-        ctrl +
+        '<div class="dub-scan__jobhead">' +
+          '<span class="dub-scan__entity-name">' + escapeHtml(j.entity_type) + '</span>' +
+          '<span class="dub-scan__status dub-scan__status_' + escapeHtml(j.status) + '">' +
+            escapeHtml(scanStatusLabel(j.status)) + '</span>' +
+          ctrl +
+        '</div>' +
+        '<div class="dub-scan__bar"><span class="' + fillCls + '" style="width:' + pct + '%"></span></div>' +
+        '<div class="dub-scan__summary">' + line1 + line2 + '</div>' +
         '</div>';
     }
 
@@ -1052,15 +1132,18 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     }
 
     function scanSectionHtml() {
-      var controls = '<div class="dub-scan__controls">' +
-        '<select class="dub-scan__entity">' + entityOptionsHtml() + '</select>' +
-        '<button type="button" class="dub__btn dub__btn_primary dub-scan__start">' +
-          escapeHtml(t('settings.scan_start', 'Сканировать')) + '</button>' +
-        '</div>';
-      return section('settings.scan_title', 'Массовая чистка',
-        '<div class="dub-settings__hint">' +
+      return '<div class="dub-card">' +
+        '<div class="dub-card__title">' + escapeHtml(t('settings.tab_mass', 'Массовая очистка')) + '</div>' +
+        '<div class="dub-card__hint">' +
           escapeHtml(t('settings.scan_hint', 'Просканировать всю базу и проиндексировать для поиска дублей.')) +
-        '</div>' + controls + '<div class="dub-scan__list"></div>');
+        '</div>' +
+        '<div class="dub-scan__controls">' +
+          '<select class="dub-scan__entity">' + entityOptionsHtml() + '</select>' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-scan__start">' +
+            escapeHtml(t('settings.scan_start_base', 'Сканировать базу')) + '</button>' +
+        '</div>' +
+        '<div class="dub-scan__list"></div>' +
+        '</div>';
     }
 
     // Подгружает список задач сканирования и (пере)запускает опрос, пока есть активные.
@@ -1131,16 +1214,24 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     }
 
     function dupsSectionHtml() {
-      var controls = '<div class="dub-found__controls">' +
-        '<select class="dub-found__entity">' + entityOptionsHtml() + '</select>' +
-        '<button type="button" class="dub__btn dub__btn_primary dub-found__show">' +
-          escapeHtml(t('settings.found_show', 'Показать')) + '</button>' +
-        '</div>';
-      return section('settings.found_title', 'Найденные дубли',
-        '<div class="dub-settings__hint">' +
+      return '<div class="dub-card">' +
+        '<div class="dub-found__top">' +
+          '<span class="dub-card__title">' + escapeHtml(t('settings.found_title', 'Найденные дубли')) + '</span>' +
+          '<a class="dub-found__mergeall" style="display:none">' +
+            escapeHtml(t('settings.found_merge_all', 'Объединить все')) +
+            ' · <b class="dub-found__mergeall-n">0</b></a>' +
+        '</div>' +
+        '<div class="dub-card__hint">' +
           escapeHtml(t('settings.found_hint',
             'Показать группы дублей по сущности (после сканирования) и объединить.')) +
-        '</div>' + controls + '<div class="dub-found__list"></div>');
+        '</div>' +
+        '<div class="dub-found__controls">' +
+          '<select class="dub-found__entity">' + entityOptionsHtml() + '</select>' +
+          '<button type="button" class="dub__btn dub__btn_primary dub-found__show">' +
+            escapeHtml(t('settings.found_show', 'Показать')) + '</button>' +
+        '</div>' +
+        '<div class="dub-found__list"></div>' +
+        '</div>';
     }
 
     function dupGroupHtml(group, idx) {
@@ -1150,12 +1241,14 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           escapeHtml(name) + '</span> <span class="dub-found__rec-id">#' +
           escapeHtml(e.amo_id) + '</span></div>';
       }).join('');
-      var head = escapeHtml(keyTypeLabel(group.key_type)) + ': ' + escapeHtml(group.key_norm) +
-        ' (' + (group.entities || []).length + ')';
+      var count = (group.entities || []).length;
+      var head = escapeHtml(keyTypeLabel(group.key_type)) + ': ' + escapeHtml(group.key_norm);
       return '<div class="dub-found__group" data-idx="' + idx + '">' +
         '<div class="dub-found__head">' +
+          '<span class="dub-found__badge">' + count + ' ' +
+            escapeHtml(t('settings.scan_records', 'записи')) + '</span>' +
           '<span class="dub-found__key">' + head + '</span>' +
-          '<button type="button" class="dub__btn dub__btn_primary dub-found__merge" data-idx="' +
+          '<button type="button" class="dub__btn dub-found__merge" data-idx="' +
             idx + '">' + escapeHtml(t('settings.found_merge', 'Объединить')) + '</button>' +
         '</div>' + records + '</div>';
     }
@@ -1163,13 +1256,19 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     function renderDupGroups(groups) {
       var $list = $('.dub-found__list');
       if (!$list.length) return;
+      var $all = $('.dub-found__mergeall');
       if (!groups.length) {
         $list.html('<div class="dub-found__empty dub-settings__placeholder">' +
           escapeHtml(t('settings.found_empty', 'Дублей не найдено. Запустите сканирование выше.')) +
           '</div>');
+        if ($all.length) $all.css('display', 'none');
         return;
       }
       $list.html(groups.map(dupGroupHtml).join(''));
+      if ($all.length) {
+        $all.find('.dub-found__mergeall-n').text(groups.length);
+        $all.css('display', '');
+      }
     }
 
     // Загрузка групп дублей по выбранной сущности: GET /api/duplicates?entity_type=… (без amo_id).

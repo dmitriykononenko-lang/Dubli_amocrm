@@ -55,6 +55,7 @@
     "scan_title": "Mass cleanup",
     "scan_hint": "Scan the whole base and index it for duplicate search.",
     "scan_start": "Scan",
+    "scan_start_base": "Scan database",
     "scan_started": "Scan started",
     "scan_empty": "No scans yet",
     "scan_pause": "Pause",
