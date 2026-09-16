@@ -50,7 +50,7 @@ export class BillingScheduler implements OnModuleInit, OnModuleDestroy {
       const due = await this.subs.listDueReminders();
       for (const d of due) {
         await this.notifier.send(this.composeReminder(d));
-        await this.subs.markNotified(d.accountId);
+        await this.subs.markNotified(d.accountId, d.product);
       }
       if (due.length) this.log.log(`Напоминаний отправлено: ${due.length}`);
     } catch (e) {

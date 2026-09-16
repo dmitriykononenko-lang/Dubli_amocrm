@@ -53,6 +53,7 @@ describe('BillingRecurrentService.chargeDueCards', () => {
     expect(repo.update).toHaveBeenCalledWith(
       '1',
       expect.objectContaining({ status: 'past_due', dunning_attempts: 1, next_charge_at: expect.any(Date), grace_until: expect.any(Date) }),
+      'dubli',
     );
     expect(res.failed).toBe(1);
   });
@@ -60,7 +61,7 @@ describe('BillingRecurrentService.chargeDueCards', () => {
   it('исчерпаны ретраи → canceled + auto_renew off', async () => {
     const { svc, repo } = make([card({ dunning_attempts: 3 })], 'canceled'); // retries=[1,3,5] → attempt 4 > 3
     const res = await svc.chargeDueCards();
-    expect(repo.update).toHaveBeenCalledWith('1', expect.objectContaining({ status: 'canceled', auto_renew: false }));
+    expect(repo.update).toHaveBeenCalledWith('1', expect.objectContaining({ status: 'canceled', auto_renew: false }), 'dubli');
     expect(res.canceled).toBe(1);
   });
 
@@ -68,7 +69,7 @@ describe('BillingRecurrentService.chargeDueCards', () => {
     const { svc, repo, yookassa } = make([card()]);
     (yookassa.chargeSaved as jest.Mock).mockRejectedValue(new Error('yk 500'));
     const res = await svc.chargeDueCards();
-    expect(repo.update).toHaveBeenCalledWith('1', expect.objectContaining({ status: 'past_due' }));
+    expect(repo.update).toHaveBeenCalledWith('1', expect.objectContaining({ status: 'past_due' }), 'dubli');
     expect(res.failed).toBe(1);
   });
 

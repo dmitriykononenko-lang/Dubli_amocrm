@@ -9,8 +9,14 @@
 (`code`/`name`/`price_per_user`/`min_users`/`pipeline_id`/`enabled`), сид — `dubli` («Дубли»).
 У `subscriptions`/`payments`/`invoices` есть поле `product` (по умолчанию `dubli`). Панель
 показывает колонку и фильтр «Продукт». Список продуктов: `GET /vendor/billing/products`.
-(Сейчас один продукт на аккаунт — PK `account_id`; при втором продукте на тот же аккаунт
-перейдём на `(account_id, product)`.)
+Один аккаунт может иметь **несколько** продуктов — подписка адресуется составным ключом
+**`(account_id, product)`** (PK `subscriptions`). Методы биллинга принимают `product`
+с дефолтом `dubli`, поэтому существующие вызовы Дубли не меняются.
+
+**Пер-продуктовый прайсинг.** Эффективный тариф продукта берётся из строки `products`
+(`price_per_user`/`min_users`). Если значение `NULL` или продукт — `dubli`, действует фолбэк
+на глобальный `BILLING_PRICE_PER_USER`/`BILLING_MIN_USERS`. По этому тарифу считается сумма
+счёта и рекуррентное списание карты для подписки соответствующего продукта.
 
 ## Панель оператора (`/vendor/panel`)
 Веб-панель для оператора: список подписок с фильтрами (продукт, статус, срок ≤ 7/14/30 дн,
@@ -61,6 +67,8 @@ curl -s -H "$TOK" "$BASE/vendor/billing/subscriptions/clientco"
 
 ### Продлить / выставить дату вручную
 Тело — одно из двух: точная дата `paid_till` ИЛИ `add_months`. `reason` попадает в историю.
+Опц. `product` (дефолт `dubli`) — для аккаунтов с несколькими продуктами. То же (`product`)
+принимают `suspend`/`resume`/`auto-renew`.
 ```bash
 # Точная дата
 curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' \
@@ -71,7 +79,7 @@ curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' \
 curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' \
   -d '{"add_months":3,"reason":"оплата по счёту №123"}' \
   "$BASE/vendor/billing/subscriptions/clientco/extend"
-# → { paidTill }
+# → { paidTill, duplicate }
 ```
 
 ### Приостановить (закрыть доступ)
@@ -95,6 +103,43 @@ curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' -d '{}' \
 curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' -d '{"enabled":false}' \
   "$BASE/vendor/billing/subscriptions/clientco/auto-renew"
 # → { autoRenew }
+```
+
+## Ingest для бэкендов других виджетов
+`POST /vendor/billing/ingest` — единая точка, которой бэкенды других наших виджетов
+регистрируют/продлевают подписку в хабе. Авторизация — тот же `X-Vendor-Token`.
+
+Тело:
+```jsonc
+{
+  "subdomain": "clientco",         // обязателен для регистрации аккаунта / матчинга
+  "account_id": "778",             // если задан — upsert аккаунта (account_id+subdomain+installed_at)
+  "product": "raspredelenie",      // код продукта (дефолт 'dubli')
+  "action": "ensure",              // ensure | extend | paid
+  "users": 5,                      // опц.
+  "months": 6,                     // для extend/paid без точной даты
+  "paid_till": "2027-06-30T00:00:00Z", // для extend точной датой
+  "amount": 17700,                 // опц., в аудит
+  "payment_id": "ext-1",           // ключ идемпотентности (payments.payment_id UNIQUE)
+  "source": "raspredelenie-backend" // метка источника → actor `ingest:<source>`
+}
+// → { ok, accountId, product, action, paidTill, duplicate }
+```
+
+Логика:
+- `account_id` задан → `accounts` upsert (регистрация внешнего виджета); иначе аккаунт матчится по `subdomain`.
+- Гарантируется подписка на `(account_id, product)` (триал от установки — как у Дубли).
+- `action=ensure` — только подписка, без платежа.
+- `action=extend`/`paid` — продление: по `paid_till` (точная дата) ЛИБО по `months`. Всё пишется
+  в `payments` с `source`/`reason`/`actor` (аудит). **Идемпотентно** по `payment_id`: повтор с тем же
+  `payment_id` не продлевает второй раз (`duplicate: true`).
+
+```bash
+# Регистрация + оплата на 6 мес (идемпотентно по payment_id)
+curl -s -X POST -H "$TOK" -H 'Content-Type: application/json' \
+  -d '{"subdomain":"clientco","account_id":"778","product":"raspredelenie","action":"paid","months":6,"amount":17700,"payment_id":"ext-1","source":"raspredelenie-backend"}' \
+  "$BASE/vendor/billing/ingest"
+# → { ok:true, accountId:"778", product:"raspredelenie", action:"paid", paidTill:"...", duplicate:false }
 ```
 
 ## Трек «счёт» — подтверждение оплаты

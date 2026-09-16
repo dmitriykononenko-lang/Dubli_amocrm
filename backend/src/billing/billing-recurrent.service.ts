@@ -50,6 +50,7 @@ export class BillingRecurrentService {
         if (payment.status === 'succeeded') {
           await this.subs.recordPayment({
             accountId,
+            product,
             months,
             users,
             source: 'yookassa',
@@ -57,16 +58,16 @@ export class BillingRecurrentService {
             amount: q.sum,
           });
           charged++;
-          this.log.log(`Рекуррент: списано с ${accountId} на ${q.sum} ₽`);
+          this.log.log(`Рекуррент: списано с ${accountId}/${product} на ${q.sum} ₽`);
         } else if (payment.status === 'pending') {
           // off-session редко бывает pending; дождёмся вебхука, не считаем неудачей.
-          this.log.log(`Рекуррент: платёж ${payment.id} pending (${accountId})`);
+          this.log.log(`Рекуррент: платёж ${payment.id} pending (${accountId}/${product})`);
         } else {
-          (await this.dunning(accountId, s.dunning_attempts, now)) === 'canceled' ? canceled++ : failed++;
+          (await this.dunning(accountId, product, s.dunning_attempts, now)) === 'canceled' ? canceled++ : failed++;
         }
       } catch (e) {
-        (await this.dunning(accountId, s.dunning_attempts, now)) === 'canceled' ? canceled++ : failed++;
-        this.log.warn(`Рекуррент ${accountId}: ${String(e)}`);
+        (await this.dunning(accountId, product, s.dunning_attempts, now)) === 'canceled' ? canceled++ : failed++;
+        this.log.warn(`Рекуррент ${accountId}/${product}: ${String(e)}`);
       }
     }
     if (charged || failed || canceled) {
@@ -76,23 +77,27 @@ export class BillingRecurrentService {
   }
 
   /** Неудачное списание: планируем следующий ретрай или (по исчерпании) отменяем подписку. */
-  private async dunning(accountId: string, prevAttempts: number, now: Date): Promise<'retry' | 'canceled'> {
+  private async dunning(accountId: string, product: string, prevAttempts: number, now: Date): Promise<'retry' | 'canceled'> {
     const retries = this.config.billingDunningRetries; // напр. [1,3,5]
     const attempt = (prevAttempts ?? 0) + 1;
     if (attempt <= retries.length) {
       const next = new Date(now.getTime() + retries[attempt - 1] * 86400_000);
       // Доступ держим до следующего ретрая (grace), статус — past_due.
-      await this.repo.update(accountId, {
-        dunning_attempts: attempt,
-        next_charge_at: next,
-        status: 'past_due',
-        grace_until: next,
-      });
-      this.log.warn(`Dunning ${accountId}: попытка ${attempt}/${retries.length}, повтор ${next.toISOString().slice(0, 10)}`);
+      await this.repo.update(
+        accountId,
+        {
+          dunning_attempts: attempt,
+          next_charge_at: next,
+          status: 'past_due',
+          grace_until: next,
+        },
+        product,
+      );
+      this.log.warn(`Dunning ${accountId}/${product}: попытка ${attempt}/${retries.length}, повтор ${next.toISOString().slice(0, 10)}`);
       return 'retry';
     }
-    await this.repo.update(accountId, { status: 'canceled', auto_renew: false, next_charge_at: null });
-    this.log.warn(`Dunning ${accountId}: исчерпано (${retries.length}) → canceled`);
+    await this.repo.update(accountId, { status: 'canceled', auto_renew: false, next_charge_at: null }, product);
+    this.log.warn(`Dunning ${accountId}/${product}: исчерпано (${retries.length}) → canceled`);
     return 'canceled';
   }
 }

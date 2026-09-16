@@ -22,8 +22,8 @@ function make(due: Due = [], overdue = 0) {
 describe('BillingScheduler.tick', () => {
   it('помечает past_due и шлёт напоминания (карта/счёт) + markNotified', async () => {
     const due: Due = [
-      { accountId: '1', subdomain: 'a', paymentMethod: 'card', paidTill: '2026-09-01T00:00:00.000Z', daysLeft: 5 },
-      { accountId: '2', subdomain: 'b', paymentMethod: 'invoice', paidTill: '2026-09-02T00:00:00.000Z', daysLeft: 3 },
+      { accountId: '1', product: 'dubli', subdomain: 'a', paymentMethod: 'card', paidTill: '2026-09-01T00:00:00.000Z', daysLeft: 5 },
+      { accountId: '2', product: 'raspredelenie', subdomain: 'b', paymentMethod: 'invoice', paidTill: '2026-09-02T00:00:00.000Z', daysLeft: 3 },
     ];
     const { sched, subs, notifier } = make(due, 2);
     await sched.tick();
@@ -31,8 +31,8 @@ describe('BillingScheduler.tick', () => {
     expect(notifier.send).toHaveBeenCalledTimes(2);
     expect((notifier.send as jest.Mock).mock.calls[0][0]).toContain('автоматически');
     expect((notifier.send as jest.Mock).mock.calls[1][0]).toContain('счёт');
-    expect(subs.markNotified).toHaveBeenCalledWith('1');
-    expect(subs.markNotified).toHaveBeenCalledWith('2');
+    expect(subs.markNotified).toHaveBeenCalledWith('1', 'dubli');
+    expect(subs.markNotified).toHaveBeenCalledWith('2', 'raspredelenie');
   });
 
   it('нет истекающих → уведомления не шлём', async () => {

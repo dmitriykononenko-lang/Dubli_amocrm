@@ -8,10 +8,25 @@ interface ExtendBody {
   add_months?: number;
   reason?: string;
   actor?: string;
+  product?: string;
 }
 interface MutateBody {
   reason?: string;
   actor?: string;
+  product?: string;
+}
+
+interface IngestBody {
+  subdomain?: string;
+  account_id?: string | number;
+  product?: string;
+  action?: 'ensure' | 'extend' | 'paid';
+  users?: number;
+  months?: number;
+  paid_till?: string;
+  amount?: number;
+  payment_id?: string;
+  source?: string;
 }
 
 const numOrUndef = (v?: string): number | undefined => {
@@ -55,6 +70,27 @@ export class VendorBillingController {
     return this.subs.listProducts();
   }
 
+  /**
+   * Ingest для бэкендов других наших виджетов: регистрация/продление подписки в хабе.
+   * Body: { subdomain, account_id?, product, action: ensure|extend|paid, users?, months?,
+   *         paid_till?, amount?, payment_id?, source? }. Идемпотентно по payment_id.
+   */
+  @Post('ingest')
+  ingest(@Body() body: IngestBody) {
+    return this.subs.ingest({
+      subdomain: body?.subdomain,
+      accountId: body?.account_id,
+      product: body?.product,
+      action: body?.action ?? 'ensure',
+      users: body?.users,
+      months: body?.months,
+      paidTill: body?.paid_till,
+      amount: body?.amount,
+      paymentId: body?.payment_id,
+      source: body?.source,
+    });
+  }
+
   /** Карточка подписки + история платежей. */
   @Get('subscriptions/:subdomain')
   get(@Param('subdomain') subdomain: string) {
@@ -70,6 +106,7 @@ export class VendorBillingController {
       addMonths: body?.add_months,
       reason: body?.reason,
       actor: body?.actor,
+      product: body?.product,
     });
   }
 
@@ -77,7 +114,7 @@ export class VendorBillingController {
   @Post('subscriptions/:subdomain/suspend')
   async suspend(@Param('subdomain') subdomain: string, @Body() body: MutateBody) {
     const accountId = await this.subs.resolveAccountId(subdomain);
-    await this.subs.suspend(accountId, { reason: body?.reason, actor: body?.actor });
+    await this.subs.suspend(accountId, { reason: body?.reason, actor: body?.actor, product: body?.product });
     return { ok: true };
   }
 
@@ -85,7 +122,7 @@ export class VendorBillingController {
   @Post('subscriptions/:subdomain/resume')
   async resume(@Param('subdomain') subdomain: string, @Body() body: MutateBody) {
     const accountId = await this.subs.resolveAccountId(subdomain);
-    return this.subs.resume(accountId, { actor: body?.actor });
+    return this.subs.resume(accountId, { actor: body?.actor, product: body?.product });
   }
 
   /** Отметить счёт оплаченным вручную (fallback к стадийному вебхуку). Матчинг по номеру. */
@@ -96,8 +133,11 @@ export class VendorBillingController {
 
   /** Включить/выключить авто-продление карты. */
   @Post('subscriptions/:subdomain/auto-renew')
-  async autoRenew(@Param('subdomain') subdomain: string, @Body() body: { enabled?: boolean; actor?: string }) {
+  async autoRenew(
+    @Param('subdomain') subdomain: string,
+    @Body() body: { enabled?: boolean; actor?: string; product?: string },
+  ) {
     const accountId = await this.subs.resolveAccountId(subdomain);
-    return this.subs.setAutoRenew(accountId, Boolean(body?.enabled), body?.actor);
+    return this.subs.setAutoRenew(accountId, Boolean(body?.enabled), body?.actor, body?.product);
   }
 }

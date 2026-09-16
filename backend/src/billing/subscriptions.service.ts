@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { AccountsService } from '../accounts/accounts.service';
 import {
@@ -35,9 +35,9 @@ export class SubscriptionsService {
     private readonly config: AppConfigService,
   ) {}
 
-  /** Гарантирует строку подписки (idempotent). Триал — от установки; paid_till — из legacy settings. */
-  async ensure(accountId: string): Promise<SubscriptionRow> {
-    const existing = await this.repo.find(accountId);
+  /** Гарантирует строку подписки на продукт (idempotent). Триал — от установки; paid_till — из legacy settings. */
+  async ensure(accountId: string, product = 'dubli'): Promise<SubscriptionRow> {
+    const existing = await this.repo.find(accountId, product);
     if (existing) return existing;
 
     const acc = await this.accounts.findById(accountId);
@@ -46,23 +46,24 @@ export class SubscriptionsService {
     const trialEndsAt = trialDays > 0 ? new Date(installedAt.getTime() + trialDays * DAY_MS) : null;
 
     // Не терять оплату клиентов, у кого дата хранилась в settings.paid_until (до этой таблицы).
-    const settings = await this.accounts.getSettings(accountId);
+    // Legacy paid_until относится к Дубли — на другие продукты его не переносим.
+    const settings = product === 'dubli' ? await this.accounts.getSettings(accountId) : {};
     const paidTill = settings.paid_until ? new Date(String(settings.paid_until)) : null;
 
     const now = new Date();
     const status: SubscriptionStatus =
       paidTill && paidTill > now ? 'active' : trialEndsAt && trialEndsAt > now ? 'trial' : 'past_due';
 
-    await this.repo.ensure(accountId, { status, trialEndsAt, paidTill });
-    return (await this.repo.find(accountId)) as SubscriptionRow;
+    await this.repo.ensure(accountId, { status, trialEndsAt, paidTill }, product);
+    return (await this.repo.find(accountId, product)) as SubscriptionRow;
   }
 
   /**
    * Состояние доступа: разрешён, если не приостановлен и now ≤ paid_till ИЛИ now ≤ grace_until
    * (льгота для банковского перевода по счёту) ИЛИ now ≤ trial_ends_at.
    */
-  async access(accountId: string): Promise<AccessState> {
-    const sub = await this.ensure(accountId);
+  async access(accountId: string, product = 'dubli'): Promise<AccessState> {
+    const sub = await this.ensure(accountId, product);
     const now = new Date();
     const paidTill = sub.paid_till ? new Date(sub.paid_till) : null;
     const graceUntil = sub.grace_until ? new Date(sub.grace_until) : null;
@@ -97,6 +98,7 @@ export class SubscriptionsService {
    */
   async recordPayment(input: {
     accountId: string;
+    product?: string;
     users?: number | null;
     months: number;
     source: PaymentSource;
@@ -106,7 +108,8 @@ export class SubscriptionsService {
     reason?: string | null;
     ykPaymentMethodId?: string | null;
   }): Promise<{ paidTill: string; duplicate: boolean }> {
-    const sub = await this.ensure(input.accountId);
+    const product = input.product ?? 'dubli';
+    const sub = await this.ensure(input.accountId, product);
     if (input.paymentId && (await this.repo.paymentExists(input.paymentId))) {
       this.log.log(`Платёж ${input.paymentId} уже учтён — пропуск (идемпотентность)`);
       return { paidTill: sub.paid_till ? new Date(sub.paid_till).toISOString() : '', duplicate: true };
@@ -131,9 +134,10 @@ export class SubscriptionsService {
       patch.payment_method = 'invoice';
       patch.grace_until = new Date(newPaidTill.getTime() + this.config.billingInvoiceGraceDays * DAY_MS);
     }
-    await this.repo.update(input.accountId, patch);
+    await this.repo.update(input.accountId, patch, product);
     await this.repo.insertPayment({
       accountId: input.accountId,
+      product,
       amount: input.amount ?? null,
       users: input.users ?? sub.users,
       months,
@@ -143,7 +147,9 @@ export class SubscriptionsService {
       actor: input.actor ?? input.source,
       paidTill: newPaidTill,
     });
-    this.log.log(`Оплата (${input.source}) аккаунт ${input.accountId}: +${months} мес → ${newPaidTill.toISOString()}`);
+    this.log.log(
+      `Оплата (${input.source}) аккаунт ${input.accountId}/${product}: +${months} мес → ${newPaidTill.toISOString()}`,
+    );
     return { paidTill: newPaidTill.toISOString(), duplicate: false };
   }
 
@@ -153,19 +159,28 @@ export class SubscriptionsService {
    */
   async issueInvoice(
     accountId: string,
-    input: { users?: number | null; months: number; amount?: number | null; number: string; vendorDealId?: string | null },
+    input: {
+      users?: number | null;
+      months: number;
+      amount?: number | null;
+      number: string;
+      vendorDealId?: string | null;
+      product?: string;
+    },
   ): Promise<{ number: string }> {
-    await this.ensure(accountId);
+    const product = input.product ?? 'dubli';
+    await this.ensure(accountId, product);
     await this.repo.createInvoice({
       accountId,
+      product,
       number: input.number,
       amount: input.amount ?? null,
       periodMonths: input.months,
       users: input.users ?? null,
       vendorDealId: input.vendorDealId ?? null,
     });
-    await this.repo.update(accountId, { status: 'awaiting_invoice_payment' });
-    this.log.log(`Счёт ${input.number} выставлен аккаунту ${accountId} (${input.months} мес)`);
+    await this.repo.update(accountId, { status: 'awaiting_invoice_payment' }, product);
+    this.log.log(`Счёт ${input.number} выставлен аккаунту ${accountId}/${product} (${input.months} мес)`);
     return { number: input.number };
   }
 
@@ -185,6 +200,7 @@ export class SubscriptionsService {
     await this.repo.updateInvoice(String(inv.id), { status: 'paid', paid_at: new Date() });
     const res = await this.recordPayment({
       accountId,
+      product: inv.product ?? 'dubli',
       months: inv.period_months ?? 1,
       users: inv.users,
       source: 'invoice',
@@ -210,9 +226,24 @@ export class SubscriptionsService {
   /** Ручная установка/сдвиг даты продления вендором (paid_till ЛИБО add_months). */
   async extend(
     accountId: string,
-    input: { paidTill?: string; addMonths?: number; reason?: string; actor?: string },
-  ): Promise<{ paidTill: string }> {
-    const sub = await this.ensure(accountId);
+    input: {
+      paidTill?: string;
+      addMonths?: number;
+      reason?: string;
+      actor?: string;
+      product?: string;
+      paymentId?: string | null;
+      amount?: number | null;
+      source?: PaymentSource;
+    },
+  ): Promise<{ paidTill: string; duplicate: boolean }> {
+    const product = input.product ?? 'dubli';
+    const sub = await this.ensure(accountId, product);
+    // Идемпотентность (для ingest): повторный payment_id не сдвигает дату второй раз.
+    if (input.paymentId && (await this.repo.paymentExists(input.paymentId))) {
+      this.log.log(`Продление ${input.paymentId} уже учтено — пропуск (идемпотентность)`);
+      return { paidTill: sub.paid_till ? new Date(sub.paid_till).toISOString() : '', duplicate: true };
+    }
     let newPaidTill: Date;
     if (input.paidTill) {
       const d = new Date(input.paidTill);
@@ -225,25 +256,28 @@ export class SubscriptionsService {
     }
     const now = new Date();
     const status: SubscriptionStatus = newPaidTill > now ? 'active' : sub.status;
-    await this.repo.update(accountId, { paid_till: newPaidTill, status });
+    await this.repo.update(accountId, { paid_till: newPaidTill, status }, product);
     await this.repo.insertPayment({
       accountId,
-      amount: null,
+      product,
+      amount: input.amount ?? null,
       users: sub.users,
       months: input.addMonths ?? null,
-      source: 'manual',
-      paymentId: null,
+      source: input.source ?? 'manual',
+      paymentId: input.paymentId ?? null,
       reason: input.reason ?? 'Ручная корректировка даты продления',
       actor: input.actor ?? 'vendor-admin',
       paidTill: newPaidTill,
     });
-    this.log.log(`Ручное продление аккаунт ${accountId} → ${newPaidTill.toISOString()} (${input.reason ?? '—'})`);
-    return { paidTill: newPaidTill.toISOString() };
+    this.log.log(
+      `Ручное продление аккаунт ${accountId}/${product} → ${newPaidTill.toISOString()} (${input.reason ?? '—'})`,
+    );
+    return { paidTill: newPaidTill.toISOString(), duplicate: false };
   }
 
   /** Подписки, которым пора напомнить об истечении (в окне BILLING_NOTIFY_LEAD_DAYS). */
   async listDueReminders(): Promise<
-    Array<{ accountId: string; subdomain: string; paymentMethod: string; paidTill: string; daysLeft: number }>
+    Array<{ accountId: string; product: string; subdomain: string; paymentMethod: string; paidTill: string; daysLeft: number }>
   > {
     const lead = this.config.billingNotifyLeadDays;
     if (lead <= 0) return [];
@@ -253,6 +287,7 @@ export class SubscriptionsService {
       const paidTill = new Date(r.paid_till);
       return {
         accountId: String(r.account_id),
+        product: r.product ?? 'dubli',
         subdomain: r.subdomain,
         paymentMethod: r.payment_method,
         paidTill: paidTill.toISOString(),
@@ -262,8 +297,8 @@ export class SubscriptionsService {
   }
 
   /** Отметить, что напоминание отправлено (гасит повтор в этом окне). */
-  async markNotified(accountId: string): Promise<void> {
-    await this.repo.setNotified(accountId, new Date());
+  async markNotified(accountId: string, product = 'dubli'): Promise<void> {
+    await this.repo.setNotified(accountId, new Date(), product);
   }
 
   /** Пометить просроченные подписки past_due. Возвращает число помеченных. */
@@ -272,11 +307,12 @@ export class SubscriptionsService {
   }
 
   /** Включить/выключить авто-продление карты (рекуррент). */
-  async setAutoRenew(accountId: string, enabled: boolean, actor?: string): Promise<{ autoRenew: boolean }> {
-    await this.ensure(accountId);
-    await this.repo.update(accountId, { auto_renew: enabled });
+  async setAutoRenew(accountId: string, enabled: boolean, actor?: string, product = 'dubli'): Promise<{ autoRenew: boolean }> {
+    await this.ensure(accountId, product);
+    await this.repo.update(accountId, { auto_renew: enabled }, product);
     await this.repo.insertPayment({
       accountId,
+      product,
       amount: null,
       users: null,
       months: null,
@@ -290,11 +326,13 @@ export class SubscriptionsService {
   }
 
   /** Приостановка: доступ закрыт (status=canceled), дата сохраняется. */
-  async suspend(accountId: string, input: { reason?: string; actor?: string }): Promise<void> {
-    const sub = await this.ensure(accountId);
-    await this.repo.update(accountId, { status: 'canceled' });
+  async suspend(accountId: string, input: { reason?: string; actor?: string; product?: string }): Promise<void> {
+    const product = input.product ?? 'dubli';
+    const sub = await this.ensure(accountId, product);
+    await this.repo.update(accountId, { status: 'canceled' }, product);
     await this.repo.insertPayment({
       accountId,
+      product,
       amount: null,
       users: sub.users,
       months: null,
@@ -304,18 +342,20 @@ export class SubscriptionsService {
       actor: input.actor ?? 'vendor-admin',
       paidTill: sub.paid_till ? new Date(sub.paid_till) : null,
     });
-    this.log.log(`Приостановка аккаунт ${accountId} (${input.reason ?? '—'})`);
+    this.log.log(`Приостановка аккаунт ${accountId}/${product} (${input.reason ?? '—'})`);
   }
 
   /** Снятие приостановки: active, если paid_till в будущем, иначе past_due. */
-  async resume(accountId: string, input: { actor?: string }): Promise<{ status: SubscriptionStatus }> {
-    const sub = await this.ensure(accountId);
+  async resume(accountId: string, input: { actor?: string; product?: string }): Promise<{ status: SubscriptionStatus }> {
+    const product = input.product ?? 'dubli';
+    const sub = await this.ensure(accountId, product);
     const now = new Date();
     const future = sub.paid_till != null && new Date(sub.paid_till) > now;
     const status: SubscriptionStatus = future ? 'active' : 'past_due';
-    await this.repo.update(accountId, { status });
+    await this.repo.update(accountId, { status }, product);
     await this.repo.insertPayment({
       accountId,
+      product,
       amount: null,
       users: sub.users,
       months: null,
@@ -325,7 +365,7 @@ export class SubscriptionsService {
       actor: input.actor ?? 'vendor-admin',
       paidTill: sub.paid_till ? new Date(sub.paid_till) : null,
     });
-    this.log.log(`Снятие приостановки аккаунт ${accountId} → ${status}`);
+    this.log.log(`Снятие приостановки аккаунт ${accountId}/${product} → ${status}`);
     return { status };
   }
 
@@ -405,6 +445,97 @@ export class SubscriptionsService {
   /** Реестр продуктов (виджетов) для панели/хаба. */
   listProducts(): Promise<Array<{ code: string; name: string; enabled: boolean }>> {
     return this.repo.listProducts();
+  }
+
+  /**
+   * Ingest из бэкендов других наших виджетов: регистрация/продление подписки в хабе.
+   * Один аккаунт может иметь несколько продуктов (подписка адресуется account_id+product).
+   *  - account_id задан → upsert аккаунта (регистрация внешнего виджета); иначе матчим по субдомену.
+   *  - action=ensure → только гарантируем подписку (триал), без платежа.
+   *  - action=extend/paid → продление (по paid_till ЛИБО months). Идемпотентно по payment_id
+   *    (payments.payment_id UNIQUE — повтор не продлевает дважды), всё пишется в payments (аудит).
+   */
+  async ingest(input: {
+    subdomain?: string | null;
+    accountId?: string | number | null;
+    product?: string | null;
+    action: 'ensure' | 'extend' | 'paid';
+    users?: number | null;
+    months?: number | null;
+    paidTill?: string | null;
+    amount?: number | null;
+    paymentId?: string | null;
+    source?: string | null;
+  }): Promise<{
+    ok: true;
+    accountId: string;
+    product: string;
+    action: 'ensure' | 'extend' | 'paid';
+    paidTill: string | null;
+    duplicate: boolean;
+  }> {
+    const product = (input.product ?? 'dubli').toString().trim() || 'dubli';
+    const subdomain = (input.subdomain ?? '').toString().trim();
+    const action = input.action;
+    if (!['ensure', 'extend', 'paid'].includes(action)) {
+      throw new BadRequestException(`Некорректный action: ${action}`);
+    }
+
+    // Аккаунт: пришёл account_id → регистрируем/обновляем; иначе матчим по субдомену.
+    let accountId: string;
+    if (input.accountId != null && String(input.accountId).trim() !== '') {
+      accountId = String(input.accountId).trim();
+      if (!subdomain) throw new BadRequestException('Для регистрации аккаунта нужен subdomain');
+      await this.accounts.upsert({ accountId, subdomain });
+    } else {
+      if (!subdomain) throw new BadRequestException('Укажите subdomain или account_id');
+      accountId = await this.resolveAccountId(subdomain);
+    }
+
+    const sub = await this.ensure(accountId, product);
+    if (action === 'ensure') {
+      return {
+        ok: true,
+        accountId,
+        product,
+        action,
+        paidTill: sub.paid_till ? new Date(sub.paid_till).toISOString() : null,
+        duplicate: false,
+      };
+    }
+
+    // enum-источник платежа для аудита: валидные значения как есть, остальное → manual (метка в actor).
+    const src: PaymentSource = input.source === 'yookassa' || input.source === 'invoice' ? input.source : 'manual';
+    const actor = input.source ? `ingest:${input.source}` : 'ingest';
+    const reason = `Ingest ${action} (${input.source ?? 'external'})`;
+
+    // Продление по точной дате (paid_till) — через extend; иначе по количеству месяцев — через recordPayment.
+    if (input.paidTill) {
+      const res = await this.extend(accountId, {
+        paidTill: input.paidTill,
+        product,
+        paymentId: input.paymentId ?? null,
+        amount: input.amount ?? null,
+        source: src,
+        actor,
+        reason,
+      });
+      return { ok: true, accountId, product, action, paidTill: res.paidTill || null, duplicate: res.duplicate };
+    }
+
+    const months = Math.max(1, Math.floor(Number(input.months ?? 0)) || 1);
+    const res = await this.recordPayment({
+      accountId,
+      product,
+      months,
+      users: input.users ?? null,
+      source: src,
+      paymentId: input.paymentId ?? null,
+      amount: input.amount ?? null,
+      actor,
+      reason,
+    });
+    return { ok: true, accountId, product, action, paidTill: res.paidTill || null, duplicate: res.duplicate };
   }
 
   /** subdomain → account_id (для vendor-эндпоинтов, которые адресуются субдоменом). */

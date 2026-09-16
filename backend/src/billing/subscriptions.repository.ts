@@ -47,30 +47,33 @@ export interface ListFilter {
 export class SubscriptionsRepository {
   constructor(@Inject(KYSELY) private readonly db: Kysely<DB>) {}
 
-  find(accountId: string): Promise<SubscriptionRow | undefined> {
+  find(accountId: string, product = 'dubli'): Promise<SubscriptionRow | undefined> {
     requireAccountId(accountId);
     return this.db
       .selectFrom('subscriptions')
       .selectAll()
       .where('account_id', '=', accountId)
+      .where('product', '=', product)
       .executeTakeFirst();
   }
 
-  /** Создаёт подписку, если её ещё нет (idempotent). */
+  /** Создаёт подписку на продукт, если её ещё нет (idempotent по составному ключу account+product). */
   async ensure(
     accountId: string,
     seed: { status: SubscriptionStatus; trialEndsAt: Date | null; paidTill: Date | null },
+    product = 'dubli',
   ): Promise<void> {
     requireAccountId(accountId);
     await this.db
       .insertInto('subscriptions')
       .values({
         account_id: accountId,
+        product,
         status: seed.status,
         trial_ends_at: seed.trialEndsAt,
         paid_till: seed.paidTill,
       })
-      .onConflict((oc) => oc.column('account_id').doNothing())
+      .onConflict((oc) => oc.columns(['account_id', 'product']).doNothing())
       .execute();
   }
 
@@ -89,12 +92,14 @@ export class SubscriptionsRepository {
       dunning_attempts: number;
       next_charge_at: Date | null;
     }>,
+    product = 'dubli',
   ): Promise<void> {
     requireAccountId(accountId);
     await this.db
       .updateTable('subscriptions')
       .set({ ...patch, updated_at: new Date() })
       .where('account_id', '=', accountId)
+      .where('product', '=', product)
       .execute();
   }
 
@@ -152,12 +157,14 @@ export class SubscriptionsRepository {
     periodMonths: number | null;
     users: number | null;
     vendorDealId: string | null;
+    product?: string;
   }): Promise<void> {
     requireAccountId(inv.accountId);
     await this.db
       .insertInto('invoices')
       .values({
         account_id: inv.accountId,
+        product: inv.product ?? 'dubli',
         number: inv.number,
         amount: inv.amount,
         period_months: inv.periodMonths,
@@ -218,12 +225,14 @@ export class SubscriptionsRepository {
     reason: string | null;
     actor: string | null;
     paidTill: Date | null;
+    product?: string;
   }): Promise<void> {
     requireAccountId(p.accountId);
     await this.db
       .insertInto('payments')
       .values({
         account_id: p.accountId,
+        product: p.product ?? 'dubli',
         amount: p.amount,
         users: p.users,
         months: p.months,
@@ -243,13 +252,16 @@ export class SubscriptionsRepository {
   async dueForReminder(
     now: Date,
     leadDays: number,
-  ): Promise<Array<{ account_id: string; subdomain: string; payment_method: PaymentMethodType; paid_till: Date }>> {
+  ): Promise<
+    Array<{ account_id: string; product: string; subdomain: string; payment_method: PaymentMethodType; paid_till: Date }>
+  > {
     const until = new Date(now.getTime() + leadDays * 86400_000);
     return this.db
       .selectFrom('subscriptions as s')
       .innerJoin('accounts as a', 'a.account_id', 's.account_id')
       .select([
         's.account_id as account_id',
+        's.product as product',
         'a.subdomain as subdomain',
         's.payment_method as payment_method',
         's.paid_till as paid_till',
@@ -265,13 +277,18 @@ export class SubscriptionsRepository {
         ]),
       )
       .execute() as Promise<
-      Array<{ account_id: string; subdomain: string; payment_method: PaymentMethodType; paid_till: Date }>
+      Array<{ account_id: string; product: string; subdomain: string; payment_method: PaymentMethodType; paid_till: Date }>
     >;
   }
 
-  async setNotified(accountId: string, at: Date): Promise<void> {
+  async setNotified(accountId: string, at: Date, product = 'dubli'): Promise<void> {
     requireAccountId(accountId);
-    await this.db.updateTable('subscriptions').set({ notified_at: at }).where('account_id', '=', accountId).execute();
+    await this.db
+      .updateTable('subscriptions')
+      .set({ notified_at: at })
+      .where('account_id', '=', accountId)
+      .where('product', '=', product)
+      .execute();
   }
 
   /** Просроченные (paid_till/grace/trial в прошлом) → past_due. Возвращает число помеченных. */
@@ -333,6 +350,7 @@ export class SubscriptionsRepository {
           .selectFrom('payments as p')
           .select('p.amount')
           .whereRef('p.account_id', '=', 'a.account_id')
+          .whereRef('p.product', '=', 's.product')
           .orderBy('p.created_at', 'desc')
           .limit(1)
           .as('last_amount'),

@@ -251,10 +251,20 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL D
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ;      -- последнее напоминание об истечении
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS dunning_attempts INTEGER NOT NULL DEFAULT 0; -- неудачные списания подряд
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS next_charge_at TIMESTAMPTZ;   -- когда повторить списание карты (dunning)
--- Мульти-продуктовый хаб: продукт (виджет) подписки. Пока один продукт на аккаунт (PK
--- остаётся account_id); при появлении второго продукта на аккаунт — перейдём на (account_id, product).
+-- Мульти-продуктовый хаб: продукт (виджет) подписки. Один аккаунт может иметь несколько
+-- продуктов, поэтому PK — составной (account_id, product).
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS product TEXT NOT NULL DEFAULT 'dubli';
 CREATE INDEX IF NOT EXISTS idx_subscriptions_product ON subscriptions (product);
+-- Миграция PK: (account_id) → (account_id, product). Идемпотентно и только если PK ещё
+-- одноколоночный (не трогаем уже мигрированную БД).
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'subscriptions_pkey' AND array_length(conkey, 1) = 1
+  ) THEN
+    ALTER TABLE subscriptions DROP CONSTRAINT subscriptions_pkey;
+    ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_pkey PRIMARY KEY (account_id, product);
+  END IF;
+END $$;
 
 -- =========================================================================
 -- payments — история платежей и ручных корректировок (аудит биллинга).

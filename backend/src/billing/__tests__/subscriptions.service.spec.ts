@@ -29,9 +29,10 @@ function make(row: Partial<SubscriptionRow> | null, opts: { paymentExists?: bool
     findById: jest.fn().mockResolvedValue({ account_id: '1', subdomain: 'clientco', installed_at: new Date() }),
     getSettings: jest.fn().mockResolvedValue({}),
     findBySubdomain: jest.fn().mockResolvedValue({ account_id: '1' }),
+    upsert: jest.fn().mockResolvedValue(undefined),
   } as unknown as AccountsService;
   const config = { billingTrialDays: 7, billingInvoiceGraceDays: 5 } as unknown as AppConfigService;
-  return { svc: new SubscriptionsService(repo, accounts, config), repo };
+  return { svc: new SubscriptionsService(repo, accounts, config), repo, accounts };
 }
 
 describe('SubscriptionsService.recordPayment', () => {
@@ -95,7 +96,7 @@ describe('SubscriptionsService.suspend/resume', () => {
     const future = new Date(Date.now() + 10 * DAY);
     const { svc, repo } = make({ status: 'active', paid_till: future });
     await svc.suspend('1', { reason: 'неоплата' });
-    expect(repo.update).toHaveBeenCalledWith('1', expect.objectContaining({ status: 'canceled' }));
+    expect(repo.update).toHaveBeenCalledWith('1', expect.objectContaining({ status: 'canceled' }), 'dubli');
     expect(repo.insertPayment).toHaveBeenCalledWith(expect.objectContaining({ source: 'manual' }));
   });
 
@@ -104,7 +105,7 @@ describe('SubscriptionsService.suspend/resume', () => {
     const { svc, repo } = make({ status: 'canceled', paid_till: future });
     const res = await svc.resume('1', {});
     expect(res.status).toBe('active');
-    expect(repo.update).toHaveBeenCalledWith('1', { status: 'active' });
+    expect(repo.update).toHaveBeenCalledWith('1', { status: 'active' }, 'dubli');
   });
 
   it('resume → past_due, если paid_till в прошлом', async () => {
@@ -122,7 +123,7 @@ describe('SubscriptionsService — трек «счёт»', () => {
     expect(repo.createInvoice).toHaveBeenCalledWith(
       expect.objectContaining({ number: 'DUB-1-ABC', periodMonths: 6, vendorDealId: '55501' }),
     );
-    expect(repo.update).toHaveBeenCalledWith('1', { status: 'awaiting_invoice_payment' });
+    expect(repo.update).toHaveBeenCalledWith('1', { status: 'awaiting_invoice_payment' }, 'dubli');
   });
 
   it('markInvoicePaid по номеру продлевает, ставит grace и payment_method=invoice', async () => {
@@ -187,6 +188,91 @@ describe('SubscriptionsService — мульти-продукт', () => {
   it('access отдаёт product подписки', async () => {
     const { svc } = make({ status: 'active', paid_till: new Date(Date.now() + 86400_000), product: 'dubli' } as never);
     expect((await svc.access('1')).product).toBe('dubli');
+  });
+
+  it('ensure на разные продукты адресуется по (account_id, product)', async () => {
+    const { svc, repo } = make(null);
+    await svc.ensure('1', 'raspredelenie');
+    expect(repo.find).toHaveBeenCalledWith('1', 'raspredelenie');
+    expect(repo.ensure).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'raspredelenie');
+  });
+});
+
+describe('SubscriptionsService.ingest — хаб', () => {
+  it('action=ensure: upsert аккаунта + гарантирует подписку продукта, без платежа', async () => {
+    const { svc, repo, accounts } = make({ status: 'trial', paid_till: null });
+    const res = await svc.ingest({
+      subdomain: 'clientco',
+      accountId: '778',
+      product: 'raspredelenie',
+      action: 'ensure',
+    });
+    expect(accounts.upsert).toHaveBeenCalledWith({ accountId: '778', subdomain: 'clientco' });
+    expect(repo.find).toHaveBeenCalledWith('778', 'raspredelenie');
+    expect(repo.insertPayment).not.toHaveBeenCalled();
+    expect(res).toEqual(expect.objectContaining({ ok: true, accountId: '778', product: 'raspredelenie', action: 'ensure', duplicate: false }));
+  });
+
+  it('action=paid: продлевает и пишет платёж с продуктом (аудит)', async () => {
+    const { svc, repo } = make({ status: 'trial', paid_till: null });
+    const res = await svc.ingest({
+      subdomain: 'clientco',
+      accountId: '778',
+      product: 'raspredelenie',
+      action: 'paid',
+      months: 6,
+      amount: 17700,
+      paymentId: 'ext-1',
+      source: 'raspredelenie-backend',
+    });
+    expect(res.duplicate).toBe(false);
+    expect(repo.insertPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ product: 'raspredelenie', paymentId: 'ext-1', actor: 'ingest:raspredelenie-backend' }),
+    );
+    const patch = (repo.update as jest.Mock).mock.calls.at(-1);
+    expect(patch?.[2]).toBe('raspredelenie'); // repo.update адресован продукту
+  });
+
+  it('идемпотентность: повтор с тем же payment_id не продлевает дважды', async () => {
+    const { svc, repo } = make({ status: 'active', paid_till: new Date(Date.now() + 10 * DAY) }, { paymentExists: true });
+    const res = await svc.ingest({
+      subdomain: 'clientco',
+      accountId: '778',
+      product: 'raspredelenie',
+      action: 'paid',
+      months: 6,
+      paymentId: 'dup',
+    });
+    expect(res.duplicate).toBe(true);
+    expect(repo.insertPayment).not.toHaveBeenCalled();
+  });
+
+  it('action=extend по точной дате paid_till', async () => {
+    const { svc, repo } = make({ status: 'active', paid_till: null });
+    const res = await svc.ingest({
+      subdomain: 'clientco',
+      accountId: '778',
+      product: 'raspredelenie',
+      action: 'extend',
+      paidTill: '2027-06-30T00:00:00.000Z',
+      paymentId: 'ext-date-1',
+    });
+    expect(res.duplicate).toBe(false);
+    const patch = (repo.update as jest.Mock).mock.calls.at(-1);
+    expect(iso(new Date(patch?.[1].paid_till))).toBe('2027-06-30T00:00:00.000Z');
+    expect(patch?.[2]).toBe('raspredelenie');
+  });
+
+  it('без account_id матчит аккаунт по субдомену', async () => {
+    const { svc, accounts } = make({ status: 'trial' });
+    await svc.ingest({ subdomain: 'clientco', product: 'dubli', action: 'ensure' });
+    expect(accounts.findBySubdomain).toHaveBeenCalledWith('clientco');
+    expect(accounts.upsert).not.toHaveBeenCalled();
+  });
+
+  it('без subdomain и account_id → ошибка', async () => {
+    const { svc } = make({ status: 'trial' });
+    await expect(svc.ingest({ product: 'dubli', action: 'ensure' })).rejects.toThrow();
   });
 });
 
