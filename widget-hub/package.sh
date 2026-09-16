@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Сборка архива виджета-лаунчера «Ko:agency — центр виджетов» для загрузки в amoCRM.
+#
+# Виджет ПРИВАТНЫЙ: code/secret_key в git НЕ хранятся — подставляются при сборке из
+# widget-hub/.publish.env (в git не коммитится) или из WIDGET_CODE / WIDGET_SECRET_KEY.
+# Флаг WIDGET_PRIVATE=1 вырезает публично-маркетплейсные поля (free/countries) из копии
+# манифеста в архиве (кабинет приватной интеграции их может отклонять).
+#
+# Использование:
+#   cp widget-hub/.publish.env.example widget-hub/.publish.env   # заполнить code+secret_key
+#   WIDGET_PRIVATE=1 ./widget-hub/package.sh                       # → widget-hub/koagency-hub-<version>.zip
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$DIR"
+
+# 1. Секреты: .publish.env (если есть) → переменные окружения.
+if [[ -f .publish.env ]]; then
+  set -a; # shellcheck disable=SC1091
+  source .publish.env; set +a
+fi
+CODE="${WIDGET_CODE:-}"
+SECRET="${WIDGET_SECRET_KEY:-}"
+if [[ -z "$CODE" || -z "$SECRET" ]]; then
+  echo "✖ Нет WIDGET_CODE / WIDGET_SECRET_KEY." >&2
+  echo "  Скопируйте .publish.env.example → .publish.env и впишите code и secret_key" >&2
+  echo "  из карточки приватной интеграции (Настройки → Интеграции → ваша интеграция → Ключи и доступы)." >&2
+  exit 1
+fi
+
+# 2. Версия из манифеста → имя архива.
+VERSION="$(python3 -c 'import json;print(json.load(open("manifest.json"))["widget"]["version"])')"
+OUT="$DIR/koagency-hub-${VERSION}.zip"
+
+# 2b. Размеры логотипов для маркетплейса (читаем IHDR PNG, без Pillow).
+python3 - <<'PY'
+import struct, sys
+REQUIRED = {'images/logo.png': (130, 100), 'images/logo_small.png': (108, 108)}
+def png_size(p):
+    with open(p, 'rb') as f:
+        head = f.read(24)
+    if head[:8] != b'\x89PNG\r\n\x1a\n':
+        raise SystemExit(f'✖ {p}: не PNG')
+    return struct.unpack('>II', head[16:24])
+bad = []
+for path, want in REQUIRED.items():
+    got = png_size(path)
+    if got != want:
+        bad.append(f'{path}: {got[0]}x{got[1]}, нужно {want[0]}x{want[1]}')
+if bad:
+    print('✖ Размеры логотипов не соответствуют маркетплейсу:', file=sys.stderr)
+    for b in bad:
+        print('  -', b, file=sys.stderr)
+    sys.exit(1)
+print('логотипы ok — logo.png 130x100, logo_small.png 108x108')
+PY
+
+# 3. Сборка во временной папке (manifest.json с подставленными code+secret_key).
+BUILD="$(mktemp -d)"
+trap 'rm -rf "$BUILD"' EXIT
+cp -r manifest.json script.js i18n images "$BUILD/"
+python3 - "$BUILD/manifest.json" "$CODE" "$SECRET" <<'PY'
+import json, sys, os
+path, code, secret = sys.argv[1], sys.argv[2], sys.argv[3]
+m = json.load(open(path, encoding="utf-8"))
+m["widget"]["code"] = code
+m["widget"]["secret_key"] = secret
+# Приватная сборка (WIDGET_PRIVATE=1): убрать публично-маркетплейсные поля free/countries.
+# Исходный manifest.json не трогаем, правки только в копии архива.
+private = os.environ.get("WIDGET_PRIVATE", "").strip().lower() in ("1", "true", "yes", "y")
+if private:
+    for k in ("free", "countries"):
+        m.pop(k, None)
+json.dump(m, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+# Лёгкая валидация: обязательные поля на месте.
+w = m["widget"]
+for f in ("name", "version", "interface_version", "code", "secret_key"):
+    assert w.get(f) not in (None, ""), f"widget.{f} пустой"
+assert isinstance(w["installation"], bool), "installation должен быть true/false (boolean)"
+print(f"manifest ok — code={code[:4]}…, version={w['version']}, private={private}")
+PY
+
+# 4. Zip: manifest.json в КОРНЕ архива, без мусора.
+rm -f "$OUT"
+( cd "$BUILD" && zip -rq "$OUT" . -x "*.DS_Store" -x "__MACOSX/*" )
+echo "✔ Собрано: $OUT"
+unzip -l "$OUT" | sed -n '1,12p'
+echo ""
+echo "Дальше: карточка приватной интеграции в аккаунте → «Загрузить виджет» → выбрать $OUT"

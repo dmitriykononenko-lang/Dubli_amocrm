@@ -1,0 +1,25 @@
+{
+  "widget": {
+    "name": "Ko:agency — Widget Hub",
+    "short_description": "Single control panel for Ko:agency widgets",
+    "description": "Ko:agency launcher: a single entry point to the control panel for our amoCRM widgets — subscriptions, payments, invoices and renewals across all products in one place. Open the control panel right from the account settings."
+  },
+  "advanced": {
+    "title": "Ko:agency — Widget Hub"
+  },
+  "hub": {
+    "brand": "Ko:agency",
+    "title": "Widget control center",
+    "subtitle": "A single panel for subscriptions, payments and renewals across all our amoCRM widgets.",
+    "open_panel": "Open the widget control panel",
+    "open_hint": "The panel opens in a new tab.",
+    "products_title": "Our widgets",
+    "product_dubli": "Dubli",
+    "product_dubli_desc": "Find and merge duplicate contacts, companies and leads",
+    "more_soon": "Other Ko:agency widgets connect to this same panel.",
+    "footer": "Ko:agency — amoCRM implementation and automation"
+  },
+  "common": {
+    "loading": "Loading…"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "widget": {
+    "name": "widget.name",
+    "description": "widget.description",
+    "short_description": "widget.short_description",
+    "version": "1.0.0",
+    "interface_version": 2,
+    "init_once": false,
+    "locale": [
+      "ru",
+      "en"
+    ],
+    "installation": false,
+    "oauth": "N",
+    "support": {
+      "link": "https://koagency.ru",
+      "email": "partnerskoda@gmail.com"
+    }
+  },
+  "tour": {},
+  "locations": [
+    "settings",
+    "advanced_settings"
+  ],
+  "advanced": {
+    "title": "advanced.title"
+  },
+  "free": "N",
+  "countries": ["RU", "KZ", "BY"]
+}
