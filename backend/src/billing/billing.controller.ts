@@ -22,8 +22,8 @@ export class BillingController {
   constructor(private readonly billing: BillingService) {}
 
   @Get()
-  status(@Query('users') users?: string, @Query('months') months?: string) {
-    return { quote: this.billing.quote(Number(users) || 0, Number(months) || 0) };
+  async status(@Query('users') users?: string, @Query('months') months?: string) {
+    return { quote: await this.billing.quote(Number(users) || 0, Number(months) || 0) };
   }
 
   @Post('invoice-request')

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionsRepository } from './subscriptions.repository';
+import { ProductsService } from './products.service';
 import { YookassaClient } from './yookassa.client';
 import { computeQuote } from './billing.pricing';
 
@@ -19,6 +20,7 @@ export class BillingRecurrentService {
     private readonly repo: SubscriptionsRepository,
     private readonly yookassa: YookassaClient,
     private readonly config: AppConfigService,
+    private readonly products: ProductsService,
   ) {}
 
   async chargeDueCards(): Promise<{ charged: number; failed: number; canceled: number }> {
@@ -31,19 +33,18 @@ export class BillingRecurrentService {
 
     for (const s of due) {
       const accountId = String(s.account_id);
-      const users = s.users ?? this.config.billingMinUsers;
+      const product = s.product ?? 'dubli';
+      const pricing = await this.products.pricing(product);
+      const users = s.users ?? pricing.minUsers;
       const months = s.months ?? 12;
-      const q = computeQuote(users, months, {
-        pricePerUser: this.config.billingPricePerUser,
-        minUsers: this.config.billingMinUsers,
-      });
-      const idempotenceKey = `recur:${accountId}:${s.paid_till ? new Date(s.paid_till).getTime() : 0}:${s.dunning_attempts}`;
+      const q = computeQuote(users, months, pricing);
+      const idempotenceKey = `recur:${accountId}:${product}:${s.paid_till ? new Date(s.paid_till).getTime() : 0}:${s.dunning_attempts}`;
       try {
         const payment = await this.yookassa.chargeSaved({
           amount: q.sum,
-          description: `Продление «Дубли»: ${q.users} польз. × ${q.months} мес`,
+          description: `Продление подписки: ${q.users} польз. × ${q.months} мес`,
           paymentMethodId: s.yk_payment_method_id,
-          metadata: { accountId, users: q.users, months: q.months, recurrent: true },
+          metadata: { accountId, product, users: q.users, months: q.months, recurrent: true },
           idempotenceKey,
         });
         if (payment.status === 'succeeded') {

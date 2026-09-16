@@ -8,9 +8,10 @@ import { AppConfigService } from '../config/app-config.service';
 import { AmocrmService, VENDOR_ACCOUNT_KEY } from '../amocrm/amocrm.service';
 import { AccountsService } from '../accounts/accounts.service';
 import type { AccountSettings, EntityType } from '../common/db/database.types';
-import { computeQuote, type Quote } from './billing.pricing';
+import { type Quote } from './billing.pricing';
 import { YookassaClient } from './yookassa.client';
 import { SubscriptionsService } from './subscriptions.service';
+import { ProductsService } from './products.service';
 
 /**
  * Ведение клиента виджета в НАШЕЙ (Ko:agency) amoCRM по этапам:
@@ -28,13 +29,12 @@ export class BillingService {
     private readonly accounts: AccountsService,
     private readonly yookassa: YookassaClient,
     private readonly subscriptions: SubscriptionsService,
+    private readonly products: ProductsService,
   ) {}
 
-  quote(users: number, months: number): Quote {
-    return computeQuote(users, months, {
-      pricePerUser: this.config.billingPricePerUser,
-      minUsers: this.config.billingMinUsers,
-    });
+  /** Котировка суммы. Виджет Дубли считается по тарифу продукта 'dubli' (фолбэк — глобальный env). */
+  quote(users: number, months: number, product = 'dubli'): Promise<Quote> {
+    return this.products.quote(users, months, product);
   }
 
   /**
@@ -61,7 +61,7 @@ export class BillingService {
     months: number,
     contact?: { phone?: string; email?: string },
   ): Promise<{ ok: true; leadId: string; sum: number; invoiceNumber: string }> {
-    const q = this.quote(users, months);
+    const q = await this.quote(users, months);
     const vendorId = await this.resolveVendorAccountId();
     if (!vendorId) {
       throw new ServiceUnavailableException(
@@ -181,7 +181,7 @@ export class BillingService {
     months: number,
     email?: string,
   ): Promise<{ confirmation_url: string; sum: number }> {
-    const q = this.quote(users, months);
+    const q = await this.quote(users, months);
     if (!this.yookassa.enabled) {
       throw new ServiceUnavailableException(
         'Онлайн-оплата будет включена после настройки ЮKassa (YOOKASSA_SHOP_ID/SECRET_KEY)',

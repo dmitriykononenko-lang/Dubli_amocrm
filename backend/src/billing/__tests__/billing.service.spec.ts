@@ -1,5 +1,7 @@
 import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { BillingService } from '../billing.service';
+import { computeQuote } from '../billing.pricing';
+import type { ProductsService } from '../products.service';
 import type { AppConfigService } from '../../config/app-config.service';
 import type { AmocrmService } from '../../amocrm/amocrm.service';
 import type { AccountsService } from '../../accounts/accounts.service';
@@ -59,12 +61,19 @@ function make(
     issueInvoice: jest.fn().mockResolvedValue({ number: 'DUB-778-TEST' }),
     markInvoicePaid: jest.fn().mockResolvedValue({ ok: true, paidTill: '2027-01-01T00:00:00.000Z', alreadyPaid: false }),
   } as unknown as import('../subscriptions.service').SubscriptionsService;
+  // Тариф Дубли — по глобальному env (399/5), как до появления хаба.
+  const pricing = { pricePerUser: config.billingPricePerUser, minUsers: config.billingMinUsers };
+  const products = {
+    pricing: jest.fn().mockResolvedValue(pricing),
+    quote: jest.fn((u: number, m: number) => Promise.resolve(computeQuote(u, m, pricing))),
+  } as unknown as ProductsService;
   return {
-    svc: new BillingService(config, amocrm, accounts, yookassa, subscriptions),
+    svc: new BillingService(config, amocrm, accounts, yookassa, subscriptions, products),
     amocrm,
     accounts,
     yookassa,
     subscriptions,
+    products,
   };
 }
 

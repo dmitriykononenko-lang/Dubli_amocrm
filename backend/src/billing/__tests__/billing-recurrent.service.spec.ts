@@ -1,6 +1,7 @@
 import { BillingRecurrentService } from '../billing-recurrent.service';
 import type { SubscriptionsService } from '../subscriptions.service';
 import type { SubscriptionsRepository } from '../subscriptions.repository';
+import type { ProductsService } from '../products.service';
 import type { YookassaClient } from '../yookassa.client';
 import type { AppConfigService } from '../../config/app-config.service';
 
@@ -22,11 +23,15 @@ function make(due: DueCard[], paymentStatus = 'succeeded', ykEnabled = true) {
     billingMinUsers: 5,
     billingDunningRetries: [1, 3, 5],
   } as unknown as AppConfigService;
-  return { svc: new BillingRecurrentService(subs, repo, yookassa, config), subs, repo, yookassa };
+  // Тариф продукта: по умолчанию глобальный (399/5), как для 'dubli'.
+  const products = {
+    pricing: jest.fn().mockResolvedValue({ pricePerUser: 399, minUsers: 5 }),
+  } as unknown as ProductsService;
+  return { svc: new BillingRecurrentService(subs, repo, yookassa, config, products), subs, repo, yookassa, products };
 }
 
 const card = (over: Partial<DueCard> = {}): DueCard =>
-  ({ account_id: '1', users: 5, months: 12, paid_till: new Date(), dunning_attempts: 0, yk_payment_method_id: 'pm_1', ...over }) as DueCard;
+  ({ account_id: '1', product: 'dubli', users: 5, months: 12, paid_till: new Date(), dunning_attempts: 0, yk_payment_method_id: 'pm_1', ...over }) as DueCard;
 
 describe('BillingRecurrentService.chargeDueCards', () => {
   it('успешное списание → recordPayment (source yookassa)', async () => {
@@ -65,6 +70,16 @@ describe('BillingRecurrentService.chargeDueCards', () => {
     const res = await svc.chargeDueCards();
     expect(repo.update).toHaveBeenCalledWith('1', expect.objectContaining({ status: 'past_due' }));
     expect(res.failed).toBe(1);
+  });
+
+  it('списывает по тарифу продукта подписки (не по глобальному)', async () => {
+    const { svc, yookassa, products } = make([card({ product: 'raspredelenie', users: 5, months: 6 })]);
+    (products.pricing as jest.Mock).mockResolvedValue({ pricePerUser: 590, minUsers: 3 });
+    await svc.chargeDueCards();
+    expect(products.pricing).toHaveBeenCalledWith('raspredelenie');
+    expect(yookassa.chargeSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 590 * 5 * 6, metadata: expect.objectContaining({ product: 'raspredelenie' }) }),
+    );
   });
 
   it('ЮKassa выключена → ничего не делает', async () => {

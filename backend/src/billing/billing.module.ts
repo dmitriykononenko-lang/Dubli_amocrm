@@ -11,6 +11,7 @@ import { BillingService } from './billing.service';
 import { YookassaClient } from './yookassa.client';
 import { SubscriptionsRepository } from './subscriptions.repository';
 import { SubscriptionsService } from './subscriptions.service';
+import { ProductsService } from './products.service';
 import { VendorTokenGuard } from './vendor-token.guard';
 import { BillingNotifier } from './billing-notifier';
 import { BillingScheduler } from './billing-scheduler';
@@ -31,6 +32,7 @@ import { BankReconcileService } from './bank-reconcile.service';
     YookassaClient,
     SubscriptionsRepository,
     SubscriptionsService,
+    ProductsService,
     VendorTokenGuard,
     BillingNotifier,
     BillingScheduler,

@@ -108,6 +108,7 @@ export class SubscriptionsRepository {
   ): Promise<
     Array<{
       account_id: string;
+      product: string;
       users: number | null;
       months: number | null;
       paid_till: Date | null;
@@ -118,7 +119,7 @@ export class SubscriptionsRepository {
     const soon = new Date(now.getTime() + leadDays * 86400_000);
     return this.db
       .selectFrom('subscriptions')
-      .select(['account_id', 'users', 'months', 'paid_till', 'dunning_attempts', 'yk_payment_method_id'])
+      .select(['account_id', 'product', 'users', 'months', 'paid_till', 'dunning_attempts', 'yk_payment_method_id'])
       .where('payment_method', '=', 'card')
       .where('auto_renew', '=', true)
       .where('yk_payment_method_id', 'is not', null)
@@ -132,6 +133,7 @@ export class SubscriptionsRepository {
       .execute() as Promise<
       Array<{
         account_id: string;
+        product: string;
         users: number | null;
         months: number | null;
         paid_till: Date | null;
@@ -303,6 +305,11 @@ export class SubscriptionsRepository {
       .select(['code', 'name', 'enabled'])
       .orderBy('name', 'asc')
       .execute();
+  }
+
+  /** Строка продукта по коду (для эффективного тарифа хаба). */
+  findProduct(code: string): Promise<Selectable<DB['products']> | undefined> {
+    return this.db.selectFrom('products').selectAll().where('code', '=', code).executeTakeFirst();
   }
 
   /** Листинг клиентов: все аккаунты LEFT JOIN подписки + сумма последнего платежа. */
