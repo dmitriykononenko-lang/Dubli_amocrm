@@ -11,6 +11,8 @@ BEGIN;
 DO $$ BEGIN
   CREATE TYPE entity_type AS ENUM ('contact', 'company', 'lead');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- Покупатели (customers) добавлены позже — расширяем enum идемпотентно (PG 12+, вне транзакции).
+ALTER TYPE entity_type ADD VALUE IF NOT EXISTS 'customer';
 
 DO $$ BEGIN
   CREATE TYPE key_type AS ENUM ('phone', 'email', 'inn', 'name', 'custom');

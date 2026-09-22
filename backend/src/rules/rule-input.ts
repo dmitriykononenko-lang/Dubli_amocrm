@@ -9,7 +9,7 @@ const NAME_MAX = 200;
 /** Валидация тела создания правила. Бросает BadRequestException при ошибке. */
 export function parseRuleInput(body: Record<string, unknown>): RuleInput {
   const entityType = parseEntityTypeParam(body.entity_type);
-  if (!entityType) throw new BadRequestException('entity_type должен быть contact|company|lead');
+  if (!entityType) throw new BadRequestException('entity_type должен быть contact|company|lead|customer');
   return {
     entityType,
     name: parseName(body.name),

@@ -5,7 +5,7 @@ import type { ColumnType, GeneratedAlways } from 'kysely';
 // При изменении schema.sql — обновить здесь (вручную или kysely-codegen).
 // =========================================================================
 
-export type EntityType = 'contact' | 'company' | 'lead';
+export type EntityType = 'contact' | 'company' | 'lead' | 'customer';
 export type KeyType = 'phone' | 'email' | 'inn' | 'name' | 'custom';
 export type SubscriptionStatus =
   | 'trial'

@@ -5,7 +5,7 @@ import type { EntityType } from './db/database.types';
 export function parseEntityTypeParam(raw?: unknown): EntityType | null {
   if (raw == null) return null;
   const v = String(raw).trim().toLowerCase();
-  if (v === 'contact' || v === 'company' || v === 'lead') return v;
+  if (v === 'contact' || v === 'company' || v === 'lead' || v === 'customer') return v;
   return toSingular(v);
 }
 

@@ -5,12 +5,14 @@ const SINGULAR_TO_PLURAL: Record<EntityType, string> = {
   contact: 'contacts',
   company: 'companies',
   lead: 'leads',
+  customer: 'customers',
 };
 
 const PLURAL_TO_SINGULAR: Record<string, EntityType> = {
   contacts: 'contact',
   companies: 'company',
   leads: 'lead',
+  customers: 'customer',
 };
 
 export function toPlural(t: EntityType): string {

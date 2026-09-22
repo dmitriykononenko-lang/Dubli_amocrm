@@ -32,7 +32,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
     var AREA_ENTITY = [
       { prefix: 'lcard', entity: 'leads' },
       { prefix: 'ccard', entity: 'contacts' },
-      { prefix: 'comcard', entity: 'companies' }
+      { prefix: 'comcard', entity: 'companies' },
+      { prefix: 'cuscard', entity: 'customers' }
     ];
 
     // Тариф (по умолчанию как у конкурентов; итог считает бэкенд, здесь — только показ).
@@ -767,7 +768,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       return [
         ['contact', t('settings.contacts', 'Контакты')],
         ['company', t('settings.companies', 'Компании')],
-        ['lead', t('settings.leads', 'Сделки')]
+        ['lead', t('settings.leads', 'Сделки')],
+        ['customer', t('settings.customers', 'Покупатели')]
       ].map(function (o) {
         return '<option value="' + o[0] + '">' + escapeHtml(o[1]) + '</option>';
       }).join('');
@@ -842,7 +844,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
       var ents = [
         ['lead', 'settings.auto_deals', 'Дубли сделок'],
         ['contact', 'settings.auto_contacts', 'Дубли контактов'],
-        ['company', 'settings.auto_companies', 'Дубли компаний']
+        ['company', 'settings.auto_companies', 'Дубли компаний'],
+        ['customer', 'settings.auto_customers', 'Дубли покупателей']
       ];
       var subtabs = ents.map(function (e, i) { return subBtn('auto', e[0], e[1], e[2], i === 0); }).join('');
       var panes = ents.map(function (e, i) {
@@ -1006,6 +1009,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
           'settings.find_contacts_sub', 'По телефону, email и имени с нормализацией', ent.contact !== false) +
         entityRow('company', 'К', 'settings.find_companies', 'Поиск дублей компаний',
           'settings.find_companies_sub', 'По названию, ИНН и сайту', ent.company !== false) +
+        entityRow('customer', 'П', 'settings.find_customers', 'Поиск дублей покупателей',
+          'settings.find_customers_sub', 'По телефону, email и имени с нормализацией', ent.customer !== false) +
         '</div>' +
         '<div class="dub-card">' +
         '<div class="dub-card__title">' + escapeHtml(t('settings.prevent', 'Запрет создания дублей')) + '</div>' +
@@ -1421,7 +1426,8 @@ define(['jquery', 'lib/components/base/modal'], function ($, Modal) {
         entities: {
           contact: $p.find('.dub-ent[data-ent="contact"]').prop('checked'),
           company: $p.find('.dub-ent[data-ent="company"]').prop('checked'),
-          lead: $p.find('.dub-ent[data-ent="lead"]').prop('checked')
+          lead: $p.find('.dub-ent[data-ent="lead"]').prop('checked'),
+          customer: $p.find('.dub-ent[data-ent="customer"]').prop('checked')
         },
         prevent_create: $p.find('.dub-prevent').prop('checked')
       };
