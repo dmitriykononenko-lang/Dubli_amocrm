@@ -7,6 +7,15 @@ import type { AmocrmService } from '../../amocrm/amocrm.service';
 import type { AccountsService } from '../../accounts/accounts.service';
 import type { YookassaClient } from '../yookassa.client';
 
+/** Реестр продуктов для тестов: 'dubli' (встроенный) + продукт хаба со своей воронкой и тарифом. */
+const REGISTRY: Record<
+  string,
+  { name: string; pipelineId: number | null; pricePerUser: number; minUsers: number }
+> = {
+  dubli: { name: 'Дубли', pipelineId: null, pricePerUser: 399, minUsers: 5 },
+  raspredelenie: { name: 'Распределение', pipelineId: 22200000, pricePerUser: 590, minUsers: 3 },
+};
+
 function make(
   configOverrides: Partial<Record<string, unknown>> = {},
   settings: Record<string, unknown> = {},
@@ -61,11 +70,34 @@ function make(
     issueInvoice: jest.fn().mockResolvedValue({ number: 'DUB-778-TEST' }),
     markInvoicePaid: jest.fn().mockResolvedValue({ ok: true, paidTill: '2027-01-01T00:00:00.000Z', alreadyPaid: false }),
   } as unknown as import('../subscriptions.service').SubscriptionsService;
-  // Тариф Дубли — по глобальному env (399/5), как до появления хаба.
-  const pricing = { pricePerUser: config.billingPricePerUser, minUsers: config.billingMinUsers };
+  // Тариф Дубли — по глобальному env (399/5), как до появления хаба; продукты хаба — из реестра.
+  const norm = (code?: string | null) => (code ?? 'dubli').trim().toLowerCase() || 'dubli';
+  const pricingOf = (code?: string | null) => {
+    const r = REGISTRY[norm(code)];
+    return r
+      ? { pricePerUser: r.pricePerUser, minUsers: r.minUsers }
+      : { pricePerUser: config.billingPricePerUser, minUsers: config.billingMinUsers };
+  };
   const products = {
-    pricing: jest.fn().mockResolvedValue(pricing),
-    quote: jest.fn((u: number, m: number) => Promise.resolve(computeQuote(u, m, pricing))),
+    pricing: jest.fn((code?: string | null) => Promise.resolve(pricingOf(code))),
+    quote: jest.fn((u: number, m: number, code?: string | null) =>
+      Promise.resolve(computeQuote(u, m, pricingOf(code))),
+    ),
+    resolve: jest.fn((code?: string | null) => {
+      const c = norm(code);
+      const r = REGISTRY[c];
+      if (!r) return Promise.reject(new BadRequestException(`Неизвестный продукт: ${c}`));
+      return Promise.resolve({ code: c, name: r.name, pipelineId: r.pipelineId });
+    }),
+    resolveLenient: jest.fn((code?: string | null) => {
+      const c = norm(code);
+      const r = REGISTRY[c];
+      return Promise.resolve(
+        r
+          ? { code: c, name: r.name, pipelineId: r.pipelineId, known: true }
+          : { code: c, name: c, pipelineId: null, known: false },
+      );
+    }),
   } as unknown as ProductsService;
   return {
     svc: new BillingService(config, amocrm, accounts, yookassa, subscriptions, products),
@@ -193,6 +225,7 @@ describe('BillingService.requestInvoice', () => {
       leadId: '55501',
       sum: 399 * 8 * 10,
       invoiceNumber: expect.stringMatching(/^DUB-778-/),
+      product: 'dubli',
     });
     expect(amocrm.create).not.toHaveBeenCalled();
     expect(amocrm.update).toHaveBeenCalledWith(
@@ -238,6 +271,56 @@ describe('BillingService.requestInvoice', () => {
   it('503, если vendor-аккаунт не настроен', async () => {
     const { svc } = make({ vendorAmocrmAccountId: undefined, vendorAmocrmSubdomain: undefined });
     await expect(svc.requestInvoice('778', 5, 6)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('продукт хаба: тариф продукта, префикс номера счёта = платёжный код, счёт с product', async () => {
+    const { svc, subscriptions, amocrm } = make(
+      { vendorAmocrmPipelineId: 11130042 },
+      { vendor_lead_id: '55501' },
+    );
+    const res = await svc.requestInvoice('778', 5, 6, undefined, 'raspredelenie');
+    expect(res).toEqual({
+      ok: true,
+      leadId: '55501',
+      sum: 590 * 5 * 6,
+      invoiceNumber: expect.stringMatching(/^RAS-778-/),
+      product: 'raspredelenie',
+    });
+    expect(subscriptions.issueInvoice).toHaveBeenCalledWith(
+      '778',
+      expect.objectContaining({
+        product: 'raspredelenie',
+        amount: 590 * 5 * 6,
+        number: expect.stringMatching(/^RAS-778-/),
+      }),
+    );
+    // Сделка продукта создана в его воронке (сделка Дублей #55501 на create не идёт).
+    expect(amocrm.create).toHaveBeenCalledWith(
+      '900',
+      'lead',
+      expect.objectContaining({ pipeline_id: 22200000 }),
+    );
+    const note = (amocrm.addNote as jest.Mock).mock.calls.find((c) => /Запросил счёт/.test(c[3]));
+    expect(note[3]).toContain('Распределение');
+  });
+
+  it('неизвестный продукт → 400, сделка/счёт не создаются', async () => {
+    const { svc, amocrm, subscriptions } = make();
+    await expect(svc.requestInvoice('778', 5, 6, undefined, 'nope')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(amocrm.create).not.toHaveBeenCalled();
+    expect(subscriptions.issueInvoice).not.toHaveBeenCalled();
+  });
+});
+
+describe('BillingService.invoicePrefix — платёжный код продукта в номере счёта', () => {
+  it("'dubli' → DUB (как раньше), код продукта → первые 3 латинские буквы, без латиницы → INV", () => {
+    expect(BillingService.invoicePrefix('dubli')).toBe('DUB');
+    expect(BillingService.invoicePrefix('raspredelenie')).toBe('RAS');
+    expect(BillingService.invoicePrefix('ko-hub')).toBe('KOH');
+    expect(BillingService.invoicePrefix('ab')).toBe('INV');
+    expect(BillingService.invoicePrefix('продукт')).toBe('INV');
   });
 });
 
@@ -285,6 +368,22 @@ describe('BillingService — этапы воронки по названию', (
       'lead',
       '55501',
       expect.objectContaining({ status_id: 777 }),
+    );
+  });
+
+  it('явные ID этапов из .env относятся к глобальной воронке — для воронки продукта ищем по названию', async () => {
+    const { svc, amocrm } = make(
+      { vendorAmocrmPipelineId: 11130042, vendorAmocrmStatusRequested: 777 },
+      { vendor_leads: { raspredelenie: '77701' } },
+    );
+    (amocrm.getPipelineStatuses as jest.Mock).mockResolvedValue(STAGES);
+    await svc.requestInvoice('778', 5, 6, undefined, 'raspredelenie');
+    expect(amocrm.getPipelineStatuses).toHaveBeenCalledWith('900', 22200000);
+    expect(amocrm.update).toHaveBeenCalledWith(
+      '900',
+      'lead',
+      '77701',
+      expect.objectContaining({ status_id: 103 }),
     );
   });
 });
@@ -351,13 +450,56 @@ describe('BillingService.createCheckout', () => {
   it('создаёт платёж ЮKassa и возвращает ссылку на оплату (без фискализации)', async () => {
     const { svc, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
     const res = await svc.createCheckout('778', 5, 6);
-    expect(res).toEqual({ confirmation_url: 'https://yookassa.ru/checkout/pay_1', sum: 11970 });
+    expect(res).toEqual({
+      confirmation_url: 'https://yookassa.ru/checkout/pay_1',
+      sum: 11970,
+      product: 'dubli',
+    });
     expect(yookassa.createPayment).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 11970,
-        metadata: expect.objectContaining({ accountId: '778', months: 6 }),
+        description: expect.stringContaining('«Дубли»'),
+        // Платёжный код продукта уходит в metadata — по нему вебхук отнесёт оплату к подписке.
+        metadata: expect.objectContaining({ accountId: '778', product: 'dubli', months: 6 }),
       }),
     );
+  });
+
+  it('продукт хаба: тариф продукта, его имя в описании и код в metadata', async () => {
+    const { svc, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
+    const res = await svc.createCheckout('778', 5, 6, undefined, 'raspredelenie');
+    expect(res).toEqual({
+      confirmation_url: 'https://yookassa.ru/checkout/pay_1',
+      sum: 590 * 5 * 6,
+      product: 'raspredelenie',
+    });
+    expect(yookassa.createPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 590 * 5 * 6,
+        description: expect.stringContaining('«Распределение»'),
+        metadata: expect.objectContaining({
+          accountId: '778',
+          product: 'raspredelenie',
+          users: 5,
+          months: 6,
+        }),
+      }),
+    );
+  });
+
+  it('код продукта нормализуется (пробелы/регистр) перед отправкой в ЮKassa', async () => {
+    const { svc, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
+    await svc.createCheckout('778', 5, 6, undefined, '  Raspredelenie ');
+    const arg = (yookassa.createPayment as jest.Mock).mock.calls[0][0];
+    expect(arg.metadata.product).toBe('raspredelenie');
+  });
+
+  it('неизвестный продукт → 400, платёж в ЮKassa не создаётся', async () => {
+    const { svc, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
+    await expect(svc.createCheckout('778', 5, 6, undefined, 'nope')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(yookassa.createPayment).not.toHaveBeenCalled();
   });
 
   it('с фискализацией добавляет чек (receipt) с email и суммой позиции = сумме', async () => {
@@ -399,6 +541,114 @@ describe('BillingService.handlePaymentNotification', () => {
     );
     expect(amocrm.update).toHaveBeenCalledWith('900', 'lead', '55501', { status_id: 104 });
     expect(amocrm.addNote).toHaveBeenCalledWith('900', 'lead', '55501', expect.stringContaining('Оплата'));
+  });
+
+  it('платёж без metadata.product (создан до хаба) → относится к «Дубли»', async () => {
+    const { svc, subscriptions, yookassa } = make({ yookassaShopId: 's', yookassaSecretKey: 'k' });
+    (yookassa.getPayment as jest.Mock).mockResolvedValue({
+      id: 'pay_1',
+      status: 'succeeded',
+      metadata: { accountId: '778', months: 6 },
+    });
+    await svc.handlePaymentNotification('pay_1');
+    expect(subscriptions.recordPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: '778', product: 'dubli' }),
+    );
+  });
+
+  it('metadata.product продукта хаба → подписка этого продукта, сделка в его воронке, paid_until Дублей не трогаем', async () => {
+    const { svc, subscriptions, accounts, amocrm, yookassa } = make(
+      { yookassaShopId: 's', yookassaSecretKey: 'k', vendorAmocrmPipelineId: 11130042 },
+      { vendor_lead_id: '55501', vendor_company_id: '5' },
+    );
+    (yookassa.getPayment as jest.Mock).mockResolvedValue({
+      id: 'pay_2',
+      status: 'succeeded',
+      amount: { value: '17700.00', currency: 'RUB' },
+      metadata: { accountId: '778', product: 'raspredelenie', users: 5, months: 6, recurrent: true },
+    });
+    (amocrm.getPipelineStatuses as jest.Mock).mockResolvedValue([
+      { id: 201, name: 'Установлен' },
+      { id: 204, name: 'Оплачен' },
+    ]);
+    await svc.handlePaymentNotification('pay_2');
+    // Распределение: платёж отнесён к подписке (778, raspredelenie), а не к Дублям.
+    expect(subscriptions.recordPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: '778',
+        product: 'raspredelenie',
+        months: 6,
+        users: 5,
+        amount: 17700,
+      }),
+    );
+    // Сделка продукта — отдельная, в воронке продукта (22200000), а не сделка Дублей #55501.
+    expect(amocrm.getPipelineStatuses).toHaveBeenCalledWith('900', 22200000);
+    expect(amocrm.create).toHaveBeenCalledWith(
+      '900',
+      'lead',
+      expect.objectContaining({
+        name: expect.stringContaining('Распределение'),
+        pipeline_id: 22200000,
+        status_id: 201,
+      }),
+    );
+    expect(amocrm.update).toHaveBeenCalledWith('900', 'lead', '55501', { status_id: 204 });
+    expect(amocrm.update).not.toHaveBeenCalledWith('900', 'lead', '55501', { status_id: 104 });
+    // Существующая компания клиента привязана к новой сделке продукта.
+    expect(amocrm.link).toHaveBeenCalledWith('900', 'lead', '55501', [
+      { to_entity_id: 5, to_entity_type: 'companies' },
+    ]);
+    // id сделки продукта сохранён отдельно от vendor_lead_id Дублей.
+    expect(accounts.updateSettings).toHaveBeenCalledWith(
+      '778',
+      expect.objectContaining({ vendor_lead_id: '55501', vendor_leads: { raspredelenie: '55501' } }),
+    );
+    // paid_until — поле виджета Дублей, для другого продукта не зеркалим.
+    const paidUntilWrites = (accounts.updateSettings as jest.Mock).mock.calls.filter(
+      (c) => c[1].paid_until,
+    );
+    expect(paidUntilWrites).toHaveLength(0);
+  });
+
+  it('повторный вебхук продукта хаба — повторно использует сохранённую сделку продукта', async () => {
+    const { svc, amocrm, yookassa } = make(
+      { yookassaShopId: 's', yookassaSecretKey: 'k' },
+      { vendor_lead_id: '55501', vendor_company_id: '5', vendor_leads: { raspredelenie: '77701' } },
+    );
+    (yookassa.getPayment as jest.Mock).mockResolvedValue({
+      id: 'pay_3',
+      status: 'succeeded',
+      metadata: { accountId: '778', product: 'raspredelenie', months: 6 },
+    });
+    await svc.handlePaymentNotification('pay_3');
+    expect(amocrm.create).not.toHaveBeenCalled();
+    expect(amocrm.link).not.toHaveBeenCalled();
+    expect(amocrm.addNote).toHaveBeenCalledWith(
+      '900',
+      'lead',
+      '77701',
+      expect.stringContaining('Распределение'),
+    );
+  });
+
+  it('неизвестный код продукта → платёж учитывается как есть, сделки в koagency не трогаем', async () => {
+    const { svc, subscriptions, amocrm, accounts, yookassa } = make(
+      { yookassaShopId: 's', yookassaSecretKey: 'k' },
+      { vendor_lead_id: '55501' },
+    );
+    (yookassa.getPayment as jest.Mock).mockResolvedValue({
+      id: 'pay_4',
+      status: 'succeeded',
+      metadata: { accountId: '778', product: 'typo', months: 6 },
+    });
+    await svc.handlePaymentNotification('pay_4');
+    expect(subscriptions.recordPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ product: 'typo' }),
+    );
+    expect(amocrm.update).not.toHaveBeenCalled();
+    expect(amocrm.create).not.toHaveBeenCalled();
+    expect(accounts.updateSettings).not.toHaveBeenCalled();
   });
 
   it('сохраняет карту при первом онлайн-платеже (payment_method.saved)', async () => {

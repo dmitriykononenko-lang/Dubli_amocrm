@@ -47,8 +47,10 @@ export interface AccountSettings {
   backend_url?: string;
   /** client_id OAuth-интеграции, которой установлен аккаунт (приватная/публичная) — чтобы refresh шёл тем же клиентом. */
   oauth_client_id?: string;
-  /** id сделки этого клиента в нашей (Ko:agency) amoCRM — ведём его по этапам биллинга. */
+  /** id сделки этого клиента в нашей (Ko:agency) amoCRM — ведём его по этапам биллинга (продукт «Дубли»). */
   vendor_lead_id?: string;
+  /** id сделок по другим продуктам хаба: { [product]: leadId } (у «Дублей» — vendor_lead_id). */
+  vendor_leads?: Record<string, string>;
   /** id компании клиента в vendor CRM (с полем «ID аккаунта amo»). */
   vendor_company_id?: string;
   /** id контакта клиента в vendor CRM (телефон/email). */

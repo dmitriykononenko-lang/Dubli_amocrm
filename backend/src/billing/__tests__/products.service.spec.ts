@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { ProductsService } from '../products.service';
 import type { SubscriptionsRepository } from '../subscriptions.repository';
 import type { AppConfigService } from '../../config/app-config.service';
@@ -58,5 +59,100 @@ describe('ProductsService.quote — котировка по тарифу про�
     const { svc } = make({ code: 'raspredelenie', price_per_user: '590.00', min_users: 8 });
     const q = await svc.quote(2, 6, 'raspredelenie');
     expect(q.users).toBe(8);
+  });
+});
+
+describe('ProductsService.normalizeCode — платёжный код из внешнего ввода', () => {
+  it('trim + lower-case; пусто/null → dubli', () => {
+    expect(ProductsService.normalizeCode('  Raspredelenie ')).toBe('raspredelenie');
+    expect(ProductsService.normalizeCode('')).toBe('dubli');
+    expect(ProductsService.normalizeCode(null)).toBe('dubli');
+    expect(ProductsService.normalizeCode(undefined)).toBe('dubli');
+  });
+});
+
+describe('ProductsService.resolve — продукт для checkout/счёта', () => {
+  it("'dubli' валиден даже без строки в реестре", async () => {
+    const { svc } = make(null);
+    await expect(svc.resolve()).resolves.toEqual({
+      code: 'dubli',
+      name: 'Дубли',
+      pipelineId: null,
+    });
+  });
+
+  it("'dubli' со строкой в реестре берёт имя и воронку оттуда", async () => {
+    const { svc } = make({ code: 'dubli', name: 'Дубли', pipeline_id: '11130042', enabled: true });
+    await expect(svc.resolve('dubli')).resolves.toEqual({
+      code: 'dubli',
+      name: 'Дубли',
+      pipelineId: 11130042,
+    });
+  });
+
+  it('продукт из реестра → код, имя, воронка (BIGINT приходит строкой)', async () => {
+    const { svc } = make({
+      code: 'raspredelenie',
+      name: 'Распределение',
+      pipeline_id: '22200000',
+      enabled: true,
+    });
+    await expect(svc.resolve('Raspredelenie')).resolves.toEqual({
+      code: 'raspredelenie',
+      name: 'Распределение',
+      pipelineId: 22200000,
+    });
+  });
+
+  it('воронка не задана → pipelineId null (фолбэк на глобальную в BillingService)', async () => {
+    const { svc } = make({ code: 'x', name: 'X', pipeline_id: null, enabled: true });
+    await expect(svc.resolve('x')).resolves.toEqual({ code: 'x', name: 'X', pipelineId: null });
+  });
+
+  it('неизвестный продукт → 400', async () => {
+    const { svc } = make(null);
+    await expect(svc.resolve('missing')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('выключенный продукт → 400', async () => {
+    const { svc } = make({ code: 'old', name: 'Old', enabled: false });
+    await expect(svc.resolve('old')).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('ProductsService.resolveLenient — продукт из metadata проведённого платежа', () => {
+  it('известный продукт → known:true с воронкой', async () => {
+    const { svc } = make({
+      code: 'raspredelenie',
+      name: 'Распределение',
+      pipeline_id: 22200000,
+      enabled: true,
+    });
+    await expect(svc.resolveLenient('raspredelenie')).resolves.toEqual({
+      code: 'raspredelenie',
+      name: 'Распределение',
+      pipelineId: 22200000,
+      known: true,
+    });
+  });
+
+  it("без кода → 'dubli', known:true (платежи до хаба)", async () => {
+    const { svc } = make(null);
+    await expect(svc.resolveLenient(undefined)).resolves.toEqual({
+      code: 'dubli',
+      name: 'Дубли',
+      pipelineId: null,
+      known: true,
+    });
+  });
+
+  it('неизвестный код → не бросает, known:false (платёж учитывается, сделку не трогаем)', async () => {
+    const { svc } = make(null);
+    await expect(svc.resolveLenient('typo')).resolves.toEqual({
+      code: 'typo',
+      name: 'typo',
+      pipelineId: null,
+      known: false,
+    });
   });
 });

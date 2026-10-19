@@ -17,13 +17,15 @@ export interface ReconcileResult {
 /**
  * Авто-сверка поступлений по счетам (фаза 5, за фича-флагом BILLING_BANK_RECONCILE).
  * Провайдер-агностик: банк/Adesk/выписка присылают входящие платежи, матчинг — ТОЛЬКО по
- * номеру счёта (DUB-…) из назначения (не по сумме: у разных клиентов суммы совпадают).
+ * номеру счёта (<платёжный код продукта>-<account_id>-<…>, напр. DUB-… для «Дублей») из
+ * назначения (не по сумме: у разных клиентов суммы совпадают).
  * Непонятные/несматченные — в ручной разбор (возвращаем списком). Идемпотентно (mark-paid).
  */
 @Injectable()
 export class BankReconcileService {
   private readonly log = new Logger('BankReconcile');
-  private static readonly NUM_RE = /DUB-\d+-[0-9A-Z]+/i;
+  /** Номер счёта: 3 латинские буквы платёжного кода продукта, account_id, base36-суффикс. */
+  private static readonly NUM_RE = /\b[A-Z]{3}-\d+-[0-9A-Z]+\b/i;
 
   constructor(
     private readonly subs: SubscriptionsService,

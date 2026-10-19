@@ -8,13 +8,17 @@ interface CheckoutBody {
   months?: number;
   email?: string;
   phone?: string;
+  /** Код продукта (платёжный код) из реестра products; пусто → 'dubli'. */
+  product?: string;
 }
 
 /**
  * Биллинг для виджета (`/api/billing`). security_key — заголовок/query, как у остальных API.
  * - GET  — предварительный расчёт суммы (тариф/срок).
  * - POST /invoice-request — заявка на счёт → сделка в нашей amoCRM.
- * - POST /checkout — онлайн-оплата (ЮKassa), пока 503 до настройки ключей.
+ * - POST /checkout — онлайн-оплата (ЮKassa), 503 пока не настроены ключи магазина.
+ * Во всех трёх `product` — код продукта хаба (платёжный код): по нему считается тариф,
+ * он уходит в metadata платежа ЮKassa и по нему оплата относится к подписке (account_id, product).
  */
 @Controller('api/billing')
 @UseGuards(ApiSecurityGuard)
@@ -22,16 +26,29 @@ export class BillingController {
   constructor(private readonly billing: BillingService) {}
 
   @Get()
-  async status(@Query('users') users?: string, @Query('months') months?: string) {
-    return { quote: await this.billing.quote(Number(users) || 0, Number(months) || 0) };
+  async status(
+    @Query('users') users?: string,
+    @Query('months') months?: string,
+    @Query('product') product?: string,
+  ) {
+    return {
+      quote: await this.billing.quote(
+        Number(users) || 0,
+        Number(months) || 0,
+        product || undefined,
+      ),
+    };
   }
 
   @Post('invoice-request')
   invoice(@AccountId() accountId: string, @Body() body: CheckoutBody) {
-    return this.billing.requestInvoice(accountId, Number(body?.users), Number(body?.months), {
-      phone: body?.phone,
-      email: body?.email,
-    });
+    return this.billing.requestInvoice(
+      accountId,
+      Number(body?.users),
+      Number(body?.months),
+      { phone: body?.phone, email: body?.email },
+      body?.product,
+    );
   }
 
   @Post('contact')
@@ -46,6 +63,7 @@ export class BillingController {
       Number(body?.users),
       Number(body?.months),
       body?.email,
+      body?.product,
     );
   }
 }

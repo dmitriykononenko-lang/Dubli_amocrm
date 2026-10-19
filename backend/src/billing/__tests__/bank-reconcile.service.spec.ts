@@ -13,8 +13,19 @@ function make(enabled = true) {
 describe('BankReconcileService', () => {
   it('extractNumber находит номер счёта в назначении', () => {
     const { svc } = make();
-    expect(svc.extractNumber('Оплата по счёту DUB-33022710-ABC1 за виджет')).toBe('DUB-33022710-ABC1');
+    expect(svc.extractNumber('Оплата по счёту DUB-33022710-ABC1 за виджет')).toBe(
+      'DUB-33022710-ABC1',
+    );
     expect(svc.extractNumber('перевод без номера')).toBeNull();
+  });
+
+  it('extractNumber понимает платёжные коды других продуктов хаба (RAS-…) и не ловит мусор', () => {
+    const { svc } = make();
+    expect(svc.extractNumber('Оплата счёта ras-33022710-k1z2 виджет Распределение')).toBe(
+      'RAS-33022710-K1Z2',
+    );
+    expect(svc.extractNumber('ИНН 7700-12345-AB')).toBeNull();
+    expect(svc.extractNumber('заказ ABCD-1-X')).toBeNull();
   });
 
   it('матчит по номеру → markInvoicePaid', async () => {

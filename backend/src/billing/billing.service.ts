@@ -11,7 +11,10 @@ import type { AccountSettings, EntityType } from '../common/db/database.types';
 import { type Quote } from './billing.pricing';
 import { YookassaClient } from './yookassa.client';
 import { SubscriptionsService } from './subscriptions.service';
-import { ProductsService } from './products.service';
+import { DEFAULT_PRODUCT, ProductsService, type ResolvedProduct } from './products.service';
+
+/** Продукт по умолчанию для вызовов без product (установка/контакт/бэкфилл виджета «Дубли»). */
+const DUBLI: ResolvedProduct = { code: DEFAULT_PRODUCT, name: 'Дубли', pipelineId: null };
 
 /**
  * Ведение клиента виджета в НАШЕЙ (Ko:agency) amoCRM по этапам:
@@ -21,7 +24,11 @@ import { ProductsService } from './products.service';
 @Injectable()
 export class BillingService {
   private readonly log = new Logger('Billing');
-  private stagesCache: { installed?: number; requested?: number; paid?: number } | null = null;
+  /** Кэш этапов по воронке (у каждого продукта может быть своя воронка в koagency). */
+  private readonly stagesCache = new Map<
+    number,
+    { installed?: number; requested?: number; paid?: number }
+  >();
 
   constructor(
     private readonly config: AppConfigService,
@@ -33,7 +40,7 @@ export class BillingService {
   ) {}
 
   /** Котировка суммы. Виджет Дубли считается по тарифу продукта 'dubli' (фолбэк — глобальный env). */
-  quote(users: number, months: number, product = 'dubli'): Promise<Quote> {
+  quote(users: number, months: number, product: string = DEFAULT_PRODUCT): Promise<Quote> {
     return this.products.quote(users, months, product);
   }
 
@@ -60,19 +67,24 @@ export class BillingService {
     users: number,
     months: number,
     contact?: { phone?: string; email?: string },
-  ): Promise<{ ok: true; leadId: string; sum: number; invoiceNumber: string }> {
-    const q = await this.quote(users, months);
+    product?: string,
+  ): Promise<{ ok: true; leadId: string; sum: number; invoiceNumber: string; product: string }> {
+    // Продукт — из тела запроса (виджет хаба) или 'dubli'; неизвестный/выключенный → 400.
+    const prod = await this.products.resolve(product);
+    const q = await this.quote(users, months, prod.code);
     const vendorId = await this.resolveVendorAccountId();
     if (!vendorId) {
       throw new ServiceUnavailableException(
         'Аккаунт для счетов не настроен (VENDOR_AMOCRM_ACCOUNT_ID или VENDOR_AMOCRM_SUBDOMAIN)',
       );
     }
-    const dealId = await this.ensureClientDeal(clientAccountId);
+    const dealId = await this.ensureClientDeal(clientAccountId, prod);
     if (!dealId) throw new ServiceUnavailableException('Не удалось создать сделку клиента');
 
     const clientSub = await this.clientSubdomain(clientAccountId);
-    const stages = await this.resolveStages(vendorId);
+    const stages = await this.resolveStages(vendorId, prod.pipelineId);
+    // Для продуктов хаба (не «Дубли») помечаем продукт в примечании/задаче — у клиента их может быть несколько.
+    const productTag = prod.code === DEFAULT_PRODUCT ? '' : ` · ${prod.name}`;
     const patch: Record<string, unknown> = { price: q.sum };
     if (stages.requested) patch.status_id = stages.requested;
     await this.amocrm.update(vendorId, 'lead', dealId, patch);
@@ -91,7 +103,7 @@ export class BillingService {
           vendorId,
           'lead',
           dealId,
-          `Запросил счёт: ${q.sum} ₽ (${q.users} польз. × ${q.months} мес)` +
+          `Запросил счёт: ${q.sum} ₽ (${q.users} польз. × ${q.months} мес)${productTag}` +
             (contactLine ? `\nКонтакт: ${contactLine}` : ''),
         ),
       'addNote(requested)',
@@ -101,7 +113,9 @@ export class BillingService {
         this.amocrm.createTask(vendorId, {
           entityType: 'lead',
           entityId: dealId,
-          text: `Выставить счёт клиенту ${clientSub}: ${q.sum} ₽` + (phone ? ` · тел ${phone}` : ''),
+          text:
+            `Выставить счёт клиенту ${clientSub}: ${q.sum} ₽${productTag}` +
+            (phone ? ` · тел ${phone}` : ''),
         }),
       'createTask(invoice)',
     );
@@ -117,7 +131,7 @@ export class BillingService {
 
     // Трек «счёт»: регистрируем счёт с уникальным номером (в назначение платежа) и
     // переводим подписку в awaiting_invoice_payment. Идёт после сделки, чтобы знать её id.
-    const invoiceNumber = this.invoiceNumber(clientAccountId);
+    const invoiceNumber = this.invoiceNumber(clientAccountId, prod.code);
     await this.best(
       () =>
         this.subscriptions.issueInvoice(clientAccountId, {
@@ -126,17 +140,38 @@ export class BillingService {
           amount: q.sum,
           number: invoiceNumber,
           vendorDealId: dealId,
+          product: prod.code,
         }),
       'issueInvoice',
     );
 
-    this.log.log(`Клиент ${clientSub}: счёт ${invoiceNumber} на ${q.sum} ₽ → сделка #${dealId}`);
-    return { ok: true, leadId: dealId, sum: q.sum, invoiceNumber };
+    this.log.log(
+      `Клиент ${clientSub}/${prod.code}: счёт ${invoiceNumber} на ${q.sum} ₽ → сделка #${dealId}`,
+    );
+    return { ok: true, leadId: dealId, sum: q.sum, invoiceNumber, product: prod.code };
   }
 
-  /** Уникальный номер счёта (референс в назначении платежа): DUB-<accountId>-<base36 времени>. */
-  private invoiceNumber(clientAccountId: string): string {
-    return `DUB-${clientAccountId}-${Date.now().toString(36).toUpperCase()}`;
+  /**
+   * Уникальный номер счёта (референс в назначении платежа): <PREFIX>-<accountId>-<base36 времени>.
+   * Префикс — платёжный код продукта (см. invoicePrefix): по нему сверка/оператор видят,
+   * к какому виджету относится поступление, ещё до поиска счёта в базе.
+   */
+  private invoiceNumber(clientAccountId: string, product: string = DEFAULT_PRODUCT): string {
+    const prefix = BillingService.invoicePrefix(product);
+    return `${prefix}-${clientAccountId}-${Date.now().toString(36).toUpperCase()}`;
+  }
+
+  /**
+   * Платёжный код продукта в номере счёта: 'dubli' → DUB (как было), иначе первые 3 латинские
+   * буквы кода продукта в верхнем регистре ('raspredelenie' → RAS); без латиницы → INV.
+   */
+  static invoicePrefix(product: string): string {
+    if (product === DEFAULT_PRODUCT) return 'DUB';
+    const letters = product
+      .replace(/[^a-z]/gi, '')
+      .toUpperCase()
+      .slice(0, 3);
+    return letters.length === 3 ? letters : 'INV';
   }
 
   /**
@@ -180,8 +215,12 @@ export class BillingService {
     users: number,
     months: number,
     email?: string,
-  ): Promise<{ confirmation_url: string; sum: number }> {
-    const q = await this.quote(users, months);
+    product?: string,
+  ): Promise<{ confirmation_url: string; sum: number; product: string }> {
+    // Продукт — платёжный код: уходит в metadata платежа ЮKassa и возвращается в вебхуке,
+    // по нему оплата относится к подписке (account_id, product). Неизвестный → 400 до создания платежа.
+    const prod = await this.products.resolve(product);
+    const q = await this.quote(users, months, prod.code);
     if (!this.yookassa.enabled) {
       throw new ServiceUnavailableException(
         'Онлайн-оплата будет включена после настройки ЮKassa (YOOKASSA_SHOP_ID/SECRET_KEY)',
@@ -189,7 +228,7 @@ export class BillingService {
     }
     const clientSub = await this.clientSubdomain(clientAccountId);
     const returnUrl = this.config.billingReturnUrl ?? 'https://dubli.koagency.ru';
-    const description = `Подписка «Дубли»: ${q.users} польз. × ${q.months} мес`;
+    const description = `Подписка «${prod.name}»: ${q.users} польз. × ${q.months} мес`;
 
     // Чек (54-ФЗ): при фискализации ЮKassa обязателен объект receipt с позицией и email.
     let receipt: Record<string, unknown> | undefined;
@@ -215,19 +254,22 @@ export class BillingService {
       amount: q.sum,
       description: `${description} (${clientSub})`,
       returnUrl,
-      metadata: { accountId: clientAccountId, users: q.users, months: q.months },
+      metadata: { accountId: clientAccountId, product: prod.code, users: q.users, months: q.months },
       receipt,
       savePaymentMethod: true, // сохраняем карту для авто-продления (рекуррент)
     });
     const url = payment.confirmation?.confirmation_url;
     if (!url) throw new ServiceUnavailableException('ЮKassa не вернула ссылку на оплату');
-    this.log.log(`Клиент ${clientSub}: платёж ЮKassa ${payment.id} на ${q.sum} ₽`);
-    return { confirmation_url: url, sum: q.sum };
+    this.log.log(`Клиент ${clientSub}/${prod.code}: платёж ЮKassa ${payment.id} на ${q.sum} ₽`);
+    return { confirmation_url: url, sum: q.sum, product: prod.code };
   }
 
   /**
    * Уведомление ЮKassa о платеже. Тело не доверяем — перепроверяем платёж по id.
-   * При успехе продлеваем подписку и двигаем сделку клиента на «Оплачен».
+   * Распределение по продукту: код продукта берём из metadata.product платежа (его кладут
+   * createCheckout и рекуррент); без кода — 'dubli' (платежи, созданные до хаба).
+   * При успехе продлеваем подписку (account_id, product) и двигаем сделку клиента на «Оплачен»
+   * в воронке продукта.
    */
   async handlePaymentNotification(paymentId: string): Promise<void> {
     if (!this.yookassa.enabled || !paymentId) return;
@@ -238,11 +280,20 @@ export class BillingService {
     const users = Number(p.metadata?.users ?? 0) || null;
     const amount = p.amount?.value != null ? Number(p.amount.value) : null;
     if (!accountId) return;
+    // Деньги уже получены — учитываем платёж даже с неизвестным кодом (в панели виден по product),
+    // но сделку в koagency для неизвестного продукта не трогаем: воронки у него нет.
+    const prod = await this.products.resolveLenient(p.metadata?.product as string | undefined);
+    if (!prod.known) {
+      this.log.warn(
+        `Платёж ${p.id}: неизвестный код продукта «${prod.code}» в metadata — учтён как есть, нужен ручной разбор`,
+      );
+    }
     // Токен сохранённой карты (для будущих безакцептных списаний рекуррентом).
     const ykPaymentMethodId = p.payment_method?.saved ? (p.payment_method.id ?? null) : null;
     // Продление через подписку — идемпотентно по payment_id (повторный вебхук не удвоит).
     const res = await this.subscriptions.recordPayment({
       accountId,
+      product: prod.code,
       months,
       users,
       source: 'yookassa',
@@ -254,9 +305,12 @@ export class BillingService {
       this.log.log(`Повторный вебхук платежа ${p.id} — уже учтён`);
       return;
     }
-    await this.syncLegacyPaidUntil(accountId, res.paidTill);
-    await this.moveDealToPaid(accountId);
-    this.log.log(`Оплата подтверждена: аккаунт ${accountId}, +${months} мес (платёж ${p.id})`);
+    // settings.paid_until читает только виджет «Дубли» — для других продуктов не зеркалим.
+    if (prod.code === DEFAULT_PRODUCT) await this.syncLegacyPaidUntil(accountId, res.paidTill);
+    if (prod.known) await this.moveDealToPaid(accountId, prod);
+    this.log.log(
+      `Оплата подтверждена: аккаунт ${accountId}/${prod.code}, +${months} мес (платёж ${p.id})`,
+    );
   }
 
   /** Зеркалим дату продления в settings.paid_until — для существующих читателей (виджет «Оплачено до»). */
@@ -266,59 +320,104 @@ export class BillingService {
     await this.accounts.updateSettings(clientAccountId, { ...settings, paid_until: paidTillIso });
   }
 
-  private async moveDealToPaid(clientAccountId: string): Promise<void> {
+  private async moveDealToPaid(
+    clientAccountId: string,
+    prod: ResolvedProduct = DUBLI,
+  ): Promise<void> {
     const vendorId = await this.resolveVendorAccountId();
     if (!vendorId) return;
-    const dealId = await this.ensureClientDeal(clientAccountId);
+    const dealId = await this.ensureClientDeal(clientAccountId, prod);
     if (!dealId) return;
-    const stages = await this.resolveStages(vendorId);
+    const stages = await this.resolveStages(vendorId, prod.pipelineId);
     if (stages.paid) await this.amocrm.update(vendorId, 'lead', dealId, { status_id: stages.paid });
-    await this.best(
-      () => this.amocrm.addNote(vendorId, 'lead', dealId, 'Оплата получена (ЮKassa)'),
-      'addNote(paid)',
-    );
+    const note =
+      prod.code === DEFAULT_PRODUCT
+        ? 'Оплата получена (ЮKassa)'
+        : `Оплата получена (ЮKassa) · ${prod.name}`;
+    await this.best(() => this.amocrm.addNote(vendorId, 'lead', dealId, note), 'addNote(paid)');
+  }
+
+  /** id сделки продукта в vendor CRM из настроек клиента: «Дубли» — vendor_lead_id, остальные — vendor_leads[code]. */
+  private static storedLeadId(settings: AccountSettings, product: string): string | null {
+    if (product === DEFAULT_PRODUCT) {
+      return settings.vendor_lead_id ? String(settings.vendor_lead_id) : null;
+    }
+    const id = settings.vendor_leads?.[product];
+    return id ? String(id) : null;
   }
 
   /**
-   * Гарантирует сделку клиента в нашей amoCRM (идемпотентно по vendor_lead_id).
+   * Гарантирует сделку клиента по продукту в нашей amoCRM (идемпотентно по сохранённому id:
+   * vendor_lead_id для «Дубли», vendor_leads[<product>] для остальных виджетов хаба).
+   * Сделка создаётся в воронке продукта (products.pipeline_id), фолбэк — VENDOR_AMOCRM_PIPELINE_ID.
    * Возвращает id сделки или null, если vendor-аккаунт не настроен.
    */
-  private async ensureClientDeal(clientAccountId: string): Promise<string | null> {
+  private async ensureClientDeal(
+    clientAccountId: string,
+    prod: ResolvedProduct = DUBLI,
+  ): Promise<string | null> {
     const vendorId = await this.resolveVendorAccountId();
     if (!vendorId) return null;
 
     const settings = await this.accounts.getSettings(clientAccountId);
     const name = await this.clientName(clientAccountId, settings);
+    const stored = BillingService.storedLeadId(settings, prod.code);
 
     let leadId: string;
-    if (settings.vendor_lead_id && (await this.entityExists(vendorId, 'lead', String(settings.vendor_lead_id)))) {
-      leadId = String(settings.vendor_lead_id);
+    let created = false;
+    if (stored && (await this.entityExists(vendorId, 'lead', stored))) {
+      leadId = stored;
     } else {
-      if (settings.vendor_lead_id) {
-        this.log.warn(`Сделка ${settings.vendor_lead_id} клиента ${clientAccountId} не найдена — создаю заново`);
+      if (stored) {
+        this.log.warn(
+          `Сделка ${stored} клиента ${clientAccountId}/${prod.code} не найдена — создаю заново`,
+        );
       }
-      const payload: Record<string, unknown> = { name: `Дубли: ${name}` };
-      const pipelineId = this.config.vendorAmocrmPipelineId;
+      const payload: Record<string, unknown> = { name: `${prod.name}: ${name}` };
+      const pipelineId = prod.pipelineId ?? this.config.vendorAmocrmPipelineId;
       if (pipelineId) payload.pipeline_id = pipelineId;
-      const stages = await this.resolveStages(vendorId);
+      const stages = await this.resolveStages(vendorId, prod.pipelineId);
       if (stages.installed) payload.status_id = stages.installed;
       leadId = await this.amocrm.create(vendorId, 'lead', payload);
+      created = true;
+      const leadPatch: Partial<AccountSettings> =
+        prod.code === DEFAULT_PRODUCT
+          ? { vendor_lead_id: leadId }
+          : { vendor_leads: { ...(settings.vendor_leads ?? {}), [prod.code]: leadId } };
       await this.accounts.updateSettings(clientAccountId, {
         ...settings,
-        vendor_lead_id: leadId,
+        ...leadPatch,
         client_name: name,
       });
       await this.best(
-        () => this.amocrm.addNote(vendorId, 'lead', leadId, `Клиент установил виджет «Дубли»: ${name}`),
+        () =>
+          this.amocrm.addNote(
+            vendorId,
+            'lead',
+            leadId,
+            `Клиент установил виджет «${prod.name}»: ${name}`,
+          ),
         'addNote(installed)',
       );
-      this.log.log(`Клиент ${name} (${clientAccountId}) → сделка #${leadId} в vendor ${vendorId}`);
+      this.log.log(
+        `Клиент ${name} (${clientAccountId}/${prod.code}) → сделка #${leadId} в vendor ${vendorId}`,
+      );
     }
 
-    // Компания с полем «ID аккаунта amo» — привязываем один раз (пока не сохранён id).
+    // Компания с полем «ID аккаунта amo» — создаём один раз на аккаунт (пока не сохранён id);
+    // к новой сделке другого продукта уже существующую компанию просто привязываем.
     const fresh = await this.accounts.getSettings(clientAccountId);
     if (!fresh.vendor_company_id) {
       await this.best(() => this.attachCompany(vendorId, clientAccountId, leadId, name), 'attachCompany');
+    } else if (created && prod.code !== DEFAULT_PRODUCT) {
+      const companyId = Number(fresh.vendor_company_id);
+      await this.best(
+        () =>
+          this.amocrm.link(vendorId, 'lead', leadId, [
+            { to_entity_id: companyId, to_entity_type: 'companies' },
+          ]),
+        'linkCompany',
+      );
     }
     return leadId;
   }
@@ -460,32 +559,39 @@ export class BillingService {
   }
 
   /**
-   * Этапы воронки для перехода сделки. Приоритет — явные ID из .env; иначе, если
-   * задана воронка, находим этапы по названию (ключевые слова «установ»/«счет»/«оплач»),
-   * чтобы достаточно было указать только VENDOR_AMOCRM_PIPELINE_ID.
+   * Этапы воронки для перехода сделки. Воронка — продукта (products.pipeline_id), иначе
+   * глобальная VENDOR_AMOCRM_PIPELINE_ID. Явные ID этапов из .env относятся к глобальной
+   * воронке и применяются только для неё; иначе этапы ищутся по названию (ключевые слова
+   * «установ»/«счет»/«оплач»), чтобы достаточно было указать только id воронки.
    */
   private async resolveStages(
     vendorId: string,
+    pipelineId?: number | null,
   ): Promise<{ installed?: number; requested?: number; paid?: number }> {
-    const pid = this.config.vendorAmocrmPipelineId;
+    const globalPid = this.config.vendorAmocrmPipelineId;
+    const pid = pipelineId ?? globalPid;
     if (!pid) return {};
-    const env = {
-      installed: this.config.vendorAmocrmStatusInstalled,
-      requested: this.config.vendorAmocrmStatusRequested,
-      paid: this.config.vendorAmocrmStatusPaid,
-    };
-    if (env.installed || env.requested || env.paid) return env;
-    if (this.stagesCache) return this.stagesCache;
+    if (pid === globalPid) {
+      const env = {
+        installed: this.config.vendorAmocrmStatusInstalled,
+        requested: this.config.vendorAmocrmStatusRequested,
+        paid: this.config.vendorAmocrmStatusPaid,
+      };
+      if (env.installed || env.requested || env.paid) return env;
+    }
+    const cached = this.stagesCache.get(pid);
+    if (cached) return cached;
     try {
       const statuses = await this.amocrm.getPipelineStatuses(vendorId, pid);
       const find = (kw: string): number | undefined =>
         statuses.find((s) => (s.name || '').toLowerCase().includes(kw))?.id;
-      this.stagesCache = {
+      const stages = {
         installed: find('установ'),
         requested: find('счет') ?? find('счёт'),
         paid: find('оплач'),
       };
-      return this.stagesCache;
+      this.stagesCache.set(pid, stages);
+      return stages;
     } catch (e) {
       this.log.warn(`Не удалось получить этапы воронки ${pid}: ${String(e)}`);
       return {};
